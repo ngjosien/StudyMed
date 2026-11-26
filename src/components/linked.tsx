@@ -83,7 +83,7 @@ export function LinkedSections({ type, rows, kinds, render, empty, grid = "space
         empty
       ) : !sections.size ? (
         <p className="glass rounded-[16px] p-8 text-center text-sm text-muted">
-          Nothing here is linked to {RECORDS[tab]?.label} yet. Open one and choose “Connect to a page”.
+          Nothing here is linked to {RECORDS[tab]?.label} yet. Open one and choose “What's it for?”.
         </p>
       ) : (
         [...sections].map(([key, s]) => (

@@ -11,7 +11,19 @@ import { Button, Empty, Page, PageHeader } from "../../components/ui";
 import { FormModal, useFormState, type FormState } from "../../components/form";
 import { useModules } from "./common";
 
-export const CLASS_KINDS = ["Lecture", "Tutorial", "Lab", "Practical", "Seminar", "Clinical"];
+/** General kinds of lesson, so they still fit next year's modules. */
+export const CLASS_KIND_OPTIONS = [
+  { value: "Lecture", label: "Lecture · content & slides" },
+  { value: "Tutorial", label: "Tutorial · discussion & practice questions" },
+  { value: "Skills lab", label: "Skills lab · hands-on practice" },
+  { value: "Practical", label: "Practical · science lab" },
+  { value: "Communication", label: "Communication · speaking & presenting" },
+  { value: "PE", label: "PE · physical activity" },
+  { value: "Clinical", label: "Clinical · placement or attachment" },
+  { value: "Online", label: "Online · e-learning" },
+  { value: "Other", label: "Other" },
+];
+export const CLASS_KINDS = CLASS_KIND_OPTIONS.map((k) => k.value);
 const HOUR = 68;
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
@@ -27,7 +39,7 @@ export function ClassForm({ state }: { state: FormState }) {
       defaults={{ module_id: options[0]?.value, kind: "Lecture", weekday: 0, start_time: "09:00", end_time: "11:00", ...state.defaults }}
       fields={[
         { key: "module_id", label: "Module", type: "select", options, numeric: true, required: true, full: true },
-        { key: "kind", label: "Kind", type: "select", options: CLASS_KINDS, required: true, full: true },
+        { key: "kind", label: "Kind of lesson", type: "select", options: CLASS_KIND_OPTIONS, required: true, full: true },
         { key: "weekday", label: "Every", type: "select", numeric: true, required: true, full: true, options: WEEKDAYS.map((d, i) => ({ value: i, label: d })) },
         { key: "start_time", label: "From", type: "time", required: true },
         { key: "end_time", label: "To", type: "time", required: true },

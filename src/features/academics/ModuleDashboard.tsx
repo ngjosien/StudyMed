@@ -1,21 +1,20 @@
 import { useEffect, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { ArrowLeft, Briefcase, ClipboardList, Clock, FileText, GraduationCap, Link2, Pencil, Percent, Plus, Repeat2 } from "lucide-react";
-import { useRow, useRows } from "../../lib/hooks";
-import { fmtDate, fmtDateTime, fmtTime } from "../../lib/dates";
+import { ArrowLeft, Briefcase, CalendarDays, ClipboardList, Clock, FileText, GraduationCap, Link2, ListTodo, Pencil, Percent, Plus, Repeat2 } from "lucide-react";
+import { db } from "../../lib/api";
+import { useMutate, useRow, useRows } from "../../lib/hooks";
+import { fmtDate, fmtDateTime, startOfWeek, toDateStr } from "../../lib/dates";
 import { cx, fmtMinutes } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
 import { DEFAULT_CUTOFFS, gradeForMark, neededFor, standing } from "../../lib/grades";
-import { Badge, Button, Card, Page, Progress } from "../../components/ui";
+import { Badge, Button, Card, Checkbox, Page, Progress } from "../../components/ui";
 import { useFormState } from "../../components/form";
 import { MarkdownView } from "../../components/markdown";
 import { Connections } from "../../components/connections";
 import { LinkChips } from "../../components/linked";
 import { STATUS_COLOR } from "./common";
 import { ExamForm, HomeworkForm, ModuleForm, PortfolioForm, TopicForm } from "./forms";
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function Panel({ title, icon: Icon, action, children }: { title: string; icon: LucideIcon; action?: ReactNode; children: ReactNode }) {
   return (
@@ -56,7 +55,12 @@ export default function ModuleDashboard() {
   const portfolio = pick("portfolio_entries", useRows("portfolio_entries", undefined, "id").rows);
   const checks = useRows("review_checks").rows;
   const comps = useRows("grading_components", { module_id: id }).rows;
-  const blocks = useRows("routine_blocks", { module_id: id }, "weekday, start_time").rows;
+  const todos = pick("todos", useRows("todos", { parent_id: null }, "done, date, id").rows);
+  const events = pick("events", useRows("events", undefined, "start_at").rows);
+  const target = useRows("study_targets", { module_id: id }).rows[0];
+  const weekStart = toDateStr(startOfWeek(new Date()));
+  const studied = useRows("study_logs", { module_id: id, date: { gte: weekStart } }).rows.reduce((n, l) => n + l.minutes, 0);
+  const mutate = useMutate();
   const [cut] = useSetting<Record<string, number>>("grades.cutoffs", DEFAULT_CUTOFFS);
 
   const moduleForm = useFormState();
@@ -159,18 +163,44 @@ export default function ModuleDashboard() {
             </div>
             {m.syllabus_md && <MarkdownView source={m.syllabus_md} className="p-2 text-sm" />}
           </Panel>
-          <Panel title="Study routine" icon={Clock} action={<Link to="/academics/routine" className="text-xs text-accent hover:underline">Plan</Link>}>
-            {!blocks.length && <None>No study times yet.</None>}
-            {blocks.map((b) => (
-              <div key={b.id} className={row}>
-                <span className="w-9 font-medium">{DAYS[b.weekday]}</span>
-                <span className="flex-1 truncate text-muted">
-                  {fmtTime(b.start_time)} {b.focus}
-                </span>
-                <span className="text-xs">{fmtMinutes(b.minutes)}</span>
+          <Panel title="Study this week" icon={Clock} action={<Link to="/routine?tab=study" className="text-xs text-accent hover:underline">Targets</Link>}>
+            {!target?.minutes_per_week ? (
+              <None>No weekly target yet.</None>
+            ) : (
+              <div className="space-y-1.5 p-2">
+                <Progress value={studied} max={target.minutes_per_week} color={m.color} />
+                <p className="text-xs text-muted">
+                  {fmtMinutes(studied) || "0m"} of {fmtMinutes(target.minutes_per_week)} this week
+                </p>
+              </div>
+            )}
+          </Panel>
+          <Panel title="To-dos" icon={ListTodo} action={<Link to="/todos?new=1" className="text-xs text-accent hover:underline">Add</Link>}>
+            {!todos.length && <None>To-dos for this module's homework or exams show here.</None>}
+            {todos.map((t) => (
+              <div key={t.id} className={cx(row, "items-start")}>
+                <Checkbox
+                  checked={!!t.done}
+                  onChange={(c) => mutate(db.update("todos", t.id, c ? { done: 1, status: "Done", completed_at: new Date().toISOString().slice(0, 19).replace("T", " ") } : { done: 0, status: "Not Started", completed_at: null }))}
+                />
+                <Link to={`/todos?id=${t.id}`} className="min-w-0 flex-1">
+                  <span className={cx("block truncate", t.done && "text-muted line-through")}>{t.title}</span>
+                  <LinkChips type="todos" id={t.id} skip={["modules"]} />
+                </Link>
+                {t.date && <span className="text-xs text-muted">{fmtDate(t.date)}</span>}
               </div>
             ))}
           </Panel>
+          {events.length > 0 && (
+            <Panel title="Events" icon={CalendarDays}>
+              {events.map((e) => (
+                <Link key={e.id} to={`/events?id=${e.id}`} className={row}>
+                  <span className="flex-1 truncate">{e.name}</span>
+                  <span className="text-xs text-muted">{fmtDateTime(e.start_at)}</span>
+                </Link>
+              ))}
+            </Panel>
+          )}
           <Panel title="Portfolio" icon={Briefcase} action={<Button size="sm" icon={Plus} onClick={() => pfForm.openNew({ module_id: id })}>Add</Button>}>
             {!portfolio.length && <None>Nothing linked yet.</None>}
             {portfolio.map((p) => (

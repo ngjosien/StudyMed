@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Target, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, HandCoins, Plus, Target, Wallet } from "lucide-react";
 import { db, type Row } from "../../../lib/api";
 import { useMutate, useNamed, useRows } from "../../../lib/hooks";
 import { addDays, fmtDateShort, parse, startOfWeek, toDateStr, today } from "../../../lib/dates";
 import { cx, fmtMoney, fromCents, toCents } from "../../../lib/format";
-import { Button, Card, Empty, IconButton, Input, Modal, Progress } from "../../../components/ui";
+import { Button, Card, Empty, Field, IconButton, Input, Modal, Progress } from "../../../components/ui";
+import { ChoiceField } from "../../../components/pickers";
+import { useSetting } from "../../../stores/ui";
+import { ALLOWANCE_KEY, paydayThisWeek, type Allowance } from "../../../lib/allowance";
 import { FormModal, useFormState, type FormState } from "../../../components/form";
 import { LinkChips, LinkedSections } from "../../../components/linked";
 import { toast } from "../../../stores/toast";
@@ -55,6 +58,65 @@ export function TxForm({ state, categories, wallets }: { state: FormState; categ
         return cat && cat.kind !== v.kind ? { ...v, category_id: null } : v;
       }}
     />
+  );
+}
+
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** Set the weekly allowance once; each payday it's logged as income by itself. */
+function AllowanceModal({ wallets, onClose }: { wallets: Row[]; onClose: () => void }) {
+  const [saved, setSaved] = useSetting<Allowance | null>(ALLOWANCE_KEY, null);
+  const [amount, setAmount] = useState(fromCents(saved?.cents));
+  const [weekday, setWeekday] = useState(saved?.weekday ?? 0);
+  const [walletId, setWalletId] = useState<number | null>(saved?.walletId ?? wallets[0]?.id ?? null);
+  const save = () => {
+    const cents = toCents(amount);
+    if (!cents || cents <= 0) return toast.error("Enter an amount greater than 0");
+    const changedDay = !saved || saved.weekday !== weekday;
+    // Start from this week's payday; keep what's already been logged.
+    setSaved({ cents, weekday, walletId, since: changedDay ? paydayThisWeek(weekday) : saved!.since, lastPaid: changedDay ? null : saved!.lastPaid });
+    toast.success(`Allowance set: ${fmtMoney(cents)} every ${WEEKDAY_NAMES[weekday]}`);
+    onClose();
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Weekly allowance"
+      width="max-w-md"
+      footer={
+        <>
+          {saved && (
+            <Button
+              variant="danger"
+              className="mr-auto"
+              onClick={() => {
+                setSaved(null);
+                onClose();
+              }}
+            >
+              Stop
+            </Button>
+          )}
+          <Button variant="primary" className="!rounded-full px-6" onClick={save}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted">Key it in once. Every payday StudyMed logs it as money received, so you never have to.</p>
+        <Input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="$ per week" className="h-14 w-full text-2xl" />
+        <Field label="Payday">
+          <ChoiceField options={WEEKDAY_NAMES.map((d, i) => ({ value: i, label: d.slice(0, 3) }))} value={weekday} onChange={(v) => setWeekday(Number(v ?? 0))} />
+        </Field>
+        {wallets.length > 1 && (
+          <Field label="Into">
+            <ChoiceField options={wallets.map((w) => ({ value: w.id, label: w.name }))} value={walletId} onChange={(v) => setWalletId(v == null ? null : Number(v))} />
+          </Field>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -110,6 +172,8 @@ export function Week({ categories, wallets }: { categories: Row[]; wallets: Row[
   const balances = useNamed("wallet_balances").rows;
   const form = useFormState();
   const [editing, setEditing] = useState<{ id: number | null; name: string; row?: Row } | null>(null);
+  const [allowanceOpen, setAllowanceOpen] = useState(false);
+  const [allowance] = useSetting<Allowance | null>(ALLOWANCE_KEY, null);
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     if (!params.get("new")) return;
@@ -166,6 +230,9 @@ export function Week({ categories, wallets }: { categories: Row[]; wallets: Row[
               </Button>
               <Button icon={Target} className="!rounded-full" onClick={() => setEditing({ id: null, name: "whole week", row: whole })}>
                 {whole ? "Change limit" : "Set weekly limit"}
+              </Button>
+              <Button icon={HandCoins} className="!rounded-full" onClick={() => setAllowanceOpen(true)}>
+                {allowance ? `Allowance ${fmtMoney(allowance.cents)} / ${WEEKDAY_NAMES[allowance.weekday].slice(0, 3)}` : "Set weekly allowance"}
               </Button>
             </div>
           </div>
@@ -244,6 +311,7 @@ export function Week({ categories, wallets }: { categories: Row[]; wallets: Row[
 
       <TxForm state={form} categories={categories} wallets={wallets} />
       {editing && <LimitModal target={editing} onClose={() => setEditing(null)} />}
+      {allowanceOpen && <AllowanceModal wallets={wallets.filter((w) => !w.archived)} onClose={() => setAllowanceOpen(false)} />}
     </div>
   );
 }

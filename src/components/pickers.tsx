@@ -17,7 +17,33 @@ function MonthGrid({ value, onPick }: { value: string | null; onPick: (d: string
     <div>
       <div className="mb-2 flex items-center justify-between">
         <IconButton icon={ChevronLeft} label="Previous month" onClick={() => setMonth(addMonths(month, -1))} />
-        <span className="text-sm font-semibold">{fmtMonth(month)}</span>
+        {/* Jump straight to any month and year (birthdays are decades back). */}
+        <span className="flex items-center gap-1 text-sm font-semibold" title={fmtMonth(month)}>
+          <select
+            aria-label="Month"
+            value={month.getMonth()}
+            onChange={(e) => setMonth(new Date(month.getFullYear(), Number(e.target.value), 1))}
+            className="cursor-pointer rounded-lg bg-transparent px-1 py-0.5 hover:bg-accent-soft"
+          >
+            {Array.from({ length: 12 }, (_, m) => (
+              <option key={m} value={m}>
+                {new Date(2000, m, 1).toLocaleDateString(undefined, { month: "long" })}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Year"
+            value={month.getFullYear()}
+            onChange={(e) => setMonth(new Date(Number(e.target.value), month.getMonth(), 1))}
+            className="tabular cursor-pointer rounded-lg bg-transparent px-1 py-0.5 hover:bg-accent-soft"
+          >
+            {Array.from({ length: new Date().getFullYear() + 11 - 1920 }, (_, i) => new Date().getFullYear() + 10 - i).map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </span>
         <IconButton icon={ChevronRight} label="Next month" onClick={() => setMonth(addMonths(month, 1))} />
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-xs">

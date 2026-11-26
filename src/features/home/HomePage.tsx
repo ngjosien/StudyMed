@@ -148,15 +148,14 @@ export default function HomePage() {
   const mutate = useMutate();
   const tick = useTick();
   const t = toDateStr(now);
-  const weekday = (now.getDay() + 6) % 7;
   const weekStart = toDateStr(startOfWeek(now));
   const horizon = toDateStr(addDays(now, 7));
 
   const agenda = (useQuery({ queryKey: ["home", "agenda", t], queryFn: () => api.calendarRange(t, horizon) }).data ?? []) as Row[];
   const recalls = useRows("review_schedule", { done_date: { null: true }, due_date: { lte: t } }, "due_date").rows;
   const modules = useRows("modules", undefined, "code").rows;
-  const blocks = useRows("routine_blocks", { weekday }, "start_time").rows;
-  const logs = useRows("study_logs", { date: t }).rows;
+  const targets = useRows("study_targets").rows;
+  const weekLogs = useRows("study_logs", { date: { gte: weekStart } }).rows;
   const habits = useRows("habits", { archived: 0 }, "position, id").rows;
   const habitChecks = useRows("habit_checks", { date: t }).rows;
   const spending = useRows("transactions", { date: { gte: weekStart }, kind: "expense" }).rows;
@@ -166,6 +165,9 @@ export default function HomePage() {
   const [draft, setDraft] = useState<string | null>(null);
 
   const byId = new Map(modules.map((m) => [m.id, m]));
+  const studyRows = targets
+    .filter((x) => x.minutes_per_week > 0 && byId.get(x.module_id) && !byId.get(x.module_id)!.archived)
+    .map((x) => ({ m: byId.get(x.module_id)!, goal: x.minutes_per_week as number, done: weekLogs.filter((l) => l.module_id === x.module_id).reduce((n, l) => n + l.minutes, 0) }));
   const sorted = agenda.filter((i) => i.layer !== "review").sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)));
   const todayItems = sorted.filter((i) => String(i.start_at).slice(0, 10) <= t && String(i.end_at ?? i.start_at).slice(0, 10) >= t);
   const soon = sorted.filter((i) => String(i.start_at).slice(0, 10) > t && i.layer !== "class").slice(0, 6);
@@ -216,8 +218,8 @@ export default function HomePage() {
         <nav className="flex flex-wrap items-center border-t border-line px-6 py-2 text-[12.5px]">
           <span className="eyebrow mr-3 !text-[9.5px]">New</span>
           {[
-            ["To-do", "/life/todos?new=1"],
-            ["Event", "/life/events?new=1"],
+            ["To-do", "/todos?new=1"],
+            ["Event", "/events?new=1"],
             ["Homework", "/academics/homework?new=1"],
             ["Spending", "/life/money?new=1"],
             ["Learned something", "/academics/flashcards?new=1"],
@@ -298,31 +300,21 @@ export default function HomePage() {
             })}
           </Tile>
 
-          <Tile title="Study today" icon={Clock} to="/academics/routine">
-            {!blocks.length && <Quiet>No study blocks today.</Quiet>}
-            {blocks.map((b) => {
-              const log = logs.find((l) => l.block_id === b.id);
-              return (
-                <div key={b.id} className="flex items-center gap-3 py-1 text-sm">
-                  <TickBox
-                    on={!!log}
-                    size={22}
-                    color={byId.get(b.module_id)?.color}
-                    label="Mark this block as studied"
-                    onClick={() =>
-                      mutate(async () => {
-                        if (log) await db.remove("study_logs", log.id);
-                        else await db.insert("study_logs", { module_id: b.module_id, block_id: b.id, date: t, minutes: b.minutes });
-                      })
-                    }
-                  />
+          <Tile title="Study this week" icon={Clock} to="/routine?tab=study">
+            {!studyRows.length && <Quiet>No weekly study targets yet.</Quiet>}
+            {studyRows.map(({ m, goal, done }) => (
+              <div key={m.id} className="py-1 text-sm">
+                <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate">
-                    {byId.get(b.module_id)?.code} <span className="text-muted">{b.focus}</span>
+                    <span className="font-medium">{m.code}</span> <span className="text-muted">{m.name}</span>
                   </span>
-                  <span className="shrink-0 text-xs text-muted">{fmtTime(b.start_time)}</span>
+                  <span className="tabular shrink-0 text-xs text-muted">
+                    {fmtMinutes(done) || "0m"} / {fmtMinutes(goal)}
+                  </span>
                 </div>
-              );
-            })}
+                <Progress className="mt-1" value={done} max={goal} color={m.color} />
+              </div>
+            ))}
           </Tile>
 
           <Tile title="Habits" icon={Flame} to="/life/habits">

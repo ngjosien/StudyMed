@@ -1,7 +1,7 @@
 {
   "name": "studymed",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,7 +31,6 @@
     "@tauri-apps/plugin-opener": "^2.7.3",
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.14.1",
-    "@types/three": "^0.180.0",
     "cmdk": "^1.1.1",
     "katex": "^0.19.1",
     "lucide-react": "^1.77.0",
@@ -42,7 +41,6 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "three": "^0.180.0",
     "zustand": "^5.1.0"
   },
   "devDependencies": {

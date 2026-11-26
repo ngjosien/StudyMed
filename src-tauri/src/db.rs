@@ -13,6 +13,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0003_databases.sql"),
     include_str!("../migrations/0004_fixed_pages.sql"),
     include_str!("../migrations/0005_timetable_goals.sql"),
+    include_str!("../migrations/0006_routine_links.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -144,6 +145,38 @@ mod tests {
         conn.execute("DELETE FROM modules WHERE id = 1", []).unwrap();
         let classes: i64 = conn.query_row("SELECT count(*) FROM class_slots", [], |r| r.get(0)).unwrap();
         assert_eq!(classes, 0);
+    }
+
+    #[test]
+    fn todos_linked_to_homework_show_on_the_module() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences'), (2, 'PHAR', 'Pharmacology');
+             INSERT INTO homework(id, module_id, title, type) VALUES (7, 1, 'Cardiac case study', 'Assignment');
+             INSERT INTO exams(id, module_id, name) VALUES (3, 2, 'Class test');
+             INSERT INTO todos(id, title) VALUES (10, 'Finish references'), (11, 'Revise drugs');
+             INSERT INTO record_links(a_type, a_id, b_type, b_id) VALUES ('todos', 10, 'homework', 7), ('exams', 3, 'todos', 11);
+             INSERT INTO events(id, name, start_at, type, subtype, module_id) VALUES (4, 'PHAR replacement class', '2026-12-01 09:00', 'School', 'Rescheduled class', 2);",
+        )
+        .unwrap();
+        let on = |m: i64| -> Vec<(String, i64)> {
+            let mut s = conn
+                .prepare("SELECT DISTINCT to_type, to_id FROM connections WHERE from_type='modules' AND from_id=?1 AND to_type IN ('todos','events') ORDER BY 1, 2")
+                .unwrap();
+            s.query_map([m], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect()
+        };
+        assert_eq!(on(1), vec![("todos".into(), 10)]);
+        assert_eq!(on(2), vec![("events".into(), 4), ("todos".into(), 11)]);
+        // And the reverse direction, so the to-do shows its module.
+        let back: i64 = conn
+            .query_row("SELECT count(*) FROM connections WHERE from_type='todos' AND from_id=10 AND to_type='modules' AND to_id=1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(back, 1);
+        // Routine items must end after they start; ticks go with their item.
+        assert!(conn.execute("INSERT INTO routine_items(title, start_time, end_time) VALUES ('x', '10:00', '09:00')", []).is_err());
+        conn.execute_batch("INSERT INTO routine_items(id, title, start_time) VALUES (1, 'Check homework', '07:00'); INSERT INTO routine_ticks VALUES (1, '2026-11-26'); DELETE FROM routine_items WHERE id = 1;").unwrap();
+        let ticks: i64 = conn.query_row("SELECT count(*) FROM routine_ticks", [], |r| r.get(0)).unwrap();
+        assert_eq!(ticks, 0);
     }
 
     #[test]

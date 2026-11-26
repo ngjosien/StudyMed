@@ -259,6 +259,10 @@ function Sheet({
       if (f.type === "money") v = toCents(v as string);
       if (typeof v === "string" && f.type !== "markdown" && f.type !== "textarea") v = v.trim();
       if (v === "") v = null;
+      // An untouched toggle is "off", not empty (NOT NULL columns refuse empty).
+      if (f.type === "checkbox") v = v ? 1 : 0;
+      // On a new record, leave empty fields out so the database's own defaults apply.
+      if (v == null && id == null) continue;
       out[f.key] = v ?? null;
     }
     if (image) out[image.key] = values[image.key] ?? null;

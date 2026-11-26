@@ -12,17 +12,26 @@ import { CountdownBadge, LocalImage } from "../../components/shared";
 import { Connections } from "../../components/connections";
 import { LinkChips, LinkedSections } from "../../components/linked";
 import { MarkdownView } from "../../components/markdown";
+import { useModules } from "../academics/common";
 
-export const EVENT_TYPES = ["Social", "Appointment", "Travel", "Celebration", "Study", "Work", "Other"];
+export const EVENT_TYPES = ["Social", "Relationship", "School", "Volunteering"];
+/** School events are one of these; CCAs list each one. */
+export const SCHOOL_KINDS = ["CCA: Red Cross", "CCA: Badminton", "Rescheduled class", "School event"];
 const TYPE_COLOR: Record<string, string> = {
   Social: "#c3a6f4",
-  Appointment: "#a6c8f4",
-  Travel: "#a6e3d0",
-  Celebration: "#f4a6c0",
+  Relationship: "#f4a6c0",
+  School: "#a6c8f4",
+  Volunteering: "#a6e3d0",
+  // Kinds from before, so older events keep their colour.
+  Appointment: "#b8d4f0",
+  Travel: "#b5e6d6",
+  Celebration: "#f4b6cc",
   Study: "#f4d8a6",
   Work: "#b8c0cc",
   Other: "#f4b8a6",
 };
+/** "School · Rescheduled class", or just the kind. */
+export const eventKind = (e: Row) => (e.subtype ? `${e.type} · ${e.subtype}` : e.type);
 
 function Checklist({ eventId }: { eventId: number }) {
   const mutate = useMutate();
@@ -65,7 +74,7 @@ function EventDetail({ id }: { id: number }) {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge color={TYPE_COLOR[e.type]}>{e.type}</Badge>
+        <Badge color={TYPE_COLOR[e.type]}>{eventKind(e)}</Badge>
         <CountdownBadge date={e.start_at} />
         {!e.sync_calendar ? (
           <Badge>
@@ -129,6 +138,7 @@ function EventDetail({ id }: { id: number }) {
 
 export function EventForm({ state }: { state: ReturnType<typeof useFormState> }) {
   const { rows: people } = useRows("people", undefined, "name");
+  const { options: modules } = useModules();
   return (
     <FormModal
       open={state.open}
@@ -139,7 +149,9 @@ export function EventForm({ state }: { state: ReturnType<typeof useFormState> })
       defaults={{ type: "Social", sync_calendar: 1, all_day: 0, ...state.defaults }}
       fields={[
         { key: "name", label: "Event name", type: "text", required: true, placeholder: "What's happening?" },
-        { key: "type", label: "Kind", type: "select", options: EVENT_TYPES.map((t) => ({ value: t, label: t, color: TYPE_COLOR[t] })), required: true },
+        { key: "type", label: "Kind", type: "select", options: EVENT_TYPES.map((t) => ({ value: t, label: t, color: TYPE_COLOR[t] })), required: true, full: true },
+        { key: "subtype", label: "What kind of school thing", type: "select", options: SCHOOL_KINDS, required: true, full: true, showIf: (v) => v.type === "School" },
+        { key: "module_id", label: "Which module's class", type: "select", options: modules, numeric: true, required: true, full: true, showIf: (v) => v.type === "School" && v.subtype === "Rescheduled class" },
         { key: "start_at", label: "Starts", type: "datetime", required: true },
         { key: "location", label: "Where", type: "text", full: true, placeholder: "Add a place" },
         { key: "all_day", label: "All day", type: "checkbox", placeholder: "All day" },
@@ -149,7 +161,9 @@ export function EventForm({ state }: { state: ReturnType<typeof useFormState> })
       ]}
       transform={(v) => {
         if (v.end_at && v.start_at && v.end_at < v.start_at) throw new Error("The event can't end before it starts");
-        return v;
+        // Only school events have a sub-kind, and only rescheduled classes a module.
+        const school = v.type === "School";
+        return { ...v, subtype: school ? v.subtype : null, module_id: school && v.subtype === "Rescheduled class" ? v.module_id : null };
       }}
       links={[{ table: "event_people", col: "event_id", otherCol: "person_id", label: "Who's going", options: people.map((p) => ({ value: p.id, label: p.name })) }]}
       reminders={{
@@ -213,7 +227,7 @@ export default function EventsPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <Badge color={TYPE_COLOR[e.type]}>{e.type}</Badge>
+                  <Badge color={TYPE_COLOR[e.type]}>{eventKind(e)}</Badge>
                   <CountdownBadge date={e.start_at} />
                 </div>
               </div>

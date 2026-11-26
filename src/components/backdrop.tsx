@@ -2,33 +2,32 @@ import { useEffect, useRef } from "react";
 import { mix, rgb, type Env, type Scene, type SceneFactory } from "./scenes/kit";
 import { neurons } from "./scenes/neurons";
 import { xray } from "./scenes/xray";
-import type { Factory3D, Scene3D } from "./scenes3d/common";
+import { cells } from "./scenes/cells";
+import { heartbeat } from "./scenes/heartbeat";
 
 /*
- * The living background. 2D scenes draw on a canvas; the 3D ones (DNA, bloodstream) load
- * three.js only when chosen. This engine handles size, palette, parallax, pausing when the
- * window is hidden, and the animated/still switch.
+ * The living background: one-colour scenes drawn on a canvas. This engine handles size,
+ * palette, parallax, pausing when the window is hidden, and the animated/still switch.
  */
 
 export const SCENES = [
   { id: "neurons", label: "Neurons" },
-  { id: "dna", label: "DNA" },
-  { id: "blood", label: "Bloodstream" },
+  { id: "cells", label: "Cells" },
+  { id: "heartbeat", label: "Heartbeat" },
   { id: "xray", label: "X-ray" },
   { id: "wash", label: "Plain" },
 ] as const;
 export type SceneId = (typeof SCENES)[number]["id"];
 type Drawn = Exclude<SceneId, "wash">;
 
-const FLAT: Partial<Record<Drawn, SceneFactory>> = { neurons, xray };
-const DEEP: Partial<Record<Drawn, () => Promise<Factory3D>>> = {
-  dna: () => import("./scenes3d/dna").then((m) => m.dna3d),
-  blood: () => import("./scenes3d/blood").then((m) => m.blood3d),
-};
+const FLAT: Record<Drawn, SceneFactory> = { neurons, cells, heartbeat, xray };
 
 /** Settings from before the scenes were split ("neural", "still") map onto the new ones. */
 export function normalizeScene(v: unknown): SceneId {
+  // Older names: "neural"/"still" were neurons; the 3D DNA and bloodstream scenes were retired.
   if (v === "neural" || v === "still") return "neurons";
+  if (v === "dna") return "cells";
+  if (v === "blood") return "heartbeat";
   return SCENES.some((s) => s.id === v) ? (v as SceneId) : "neurons";
 }
 
@@ -51,7 +50,7 @@ function readEnv(): Env {
 }
 
 export function SceneBackdrop({ scene, still }: { scene: Drawn; still: boolean }) {
-  // A fresh canvas per scene: a canvas can't switch between 2D and WebGL.
+  // A fresh canvas per scene, so nothing from the last one lingers.
   return <SceneCanvas key={scene} scene={scene} still={still} />;
 }
 
@@ -62,32 +61,22 @@ function SceneCanvas({ scene, still }: { scene: Drawn; still: boolean }) {
     const canvas = ref.current!;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
-    const is3d = !!DEEP[scene];
-    const ctx = is3d ? null : canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d")!;
     let env = readEnv();
     let flat: Scene | null = null;
-    let deep: Scene3D | null = null;
-    let factory3d: Factory3D | null = null;
     let raf = 0;
     let alive = true;
     let last = performance.now();
     const t0 = last;
-    // 3D scenes run at up to 40 fps; it's a background, and this keeps laptops cool.
-    const minStep = is3d ? 1 / 40 : 0;
+    // A background doesn't need more than 40 fps; this keeps laptops cool.
+    const minStep = 1 / 40;
 
     const build = async () => {
       env = readEnv();
-      if (is3d) {
-        factory3d ??= await DEEP[scene]!();
-        if (!alive) return;
-        deep?.dispose();
-        deep = factory3d(canvas, env);
-      } else {
-        canvas.width = env.W * env.dpr;
-        canvas.height = env.H * env.dpr;
-        flat = FLAT[scene]!(env);
-        await flat.ready;
-      }
+      canvas.width = env.W * env.dpr;
+      canvas.height = env.H * env.dpr;
+      flat = FLAT[scene](env);
+      await flat.ready;
     };
 
     const draw = (time: number, dt: number) => {
@@ -95,8 +84,7 @@ function SceneCanvas({ scene, still }: { scene: Drawn; still: boolean }) {
       mouse.y += (mouse.ty - mouse.y) * 0.03;
       const ox = Math.sin(time * 0.05) * 14 + mouse.x * 10;
       const oy = Math.cos(time * 0.04) * 10 + mouse.y * 8;
-      if (deep) deep.frame(time, dt, ox, oy);
-      else if (flat && ctx) {
+      if (flat) {
         ctx.setTransform(env.dpr, 0, 0, env.dpr, 0, 0);
         ctx.globalCompositeOperation = "source-over";
         ctx.clearRect(0, 0, env.W, env.H);
@@ -122,8 +110,7 @@ function SceneCanvas({ scene, still }: { scene: Drawn; still: boolean }) {
       if (!alive) return;
       if (still || reduce.matches) {
         // Run a few simulated seconds so the still frame looks alive, then stop.
-        const steps = is3d ? 30 : 180;
-        for (let i = 0; i < steps; i++) draw(i / 30 + 4, 1 / 30);
+        for (let i = 0; i < 180; i++) draw(i / 30 + 4, 1 / 30);
         return;
       }
       last = performance.now();
@@ -137,11 +124,7 @@ function SceneCanvas({ scene, still }: { scene: Drawn; still: boolean }) {
     const onResize = () => {
       clearTimeout(resizeT);
       resizeT = setTimeout(() => {
-        if (deep) {
-          env = readEnv();
-          deep.resize(env.W, env.H);
-          start();
-        } else rebuild();
+        rebuild();
       }, 150);
     };
     const onMove = (e: MouseEvent) => {
@@ -161,7 +144,6 @@ function SceneCanvas({ scene, still }: { scene: Drawn; still: boolean }) {
       cancelAnimationFrame(raf);
       clearTimeout(resizeT);
       mo.disconnect();
-      deep?.dispose();
       window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMove);
       document.removeEventListener("visibilitychange", onVis);

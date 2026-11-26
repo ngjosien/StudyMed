@@ -4,7 +4,7 @@ import { Command } from "cmdk";
 import { useQuery } from "@tanstack/react-query";
 import { Moon, Monitor, PanelLeftClose, PanelLeftOpen, Search, Sun, X, CornerDownLeft, Plus, Bell } from "lucide-react";
 import { api } from "../lib/api";
-import { allItems, calendarItem, ENTITY_LABEL, entityRoute, groups, homeItem, settingsItem, type NavItem } from "../lib/nav";
+import { allItems, ENTITY_LABEL, entityRoute, groups, settingsItem, topItems, type NavItem } from "../lib/nav";
 import { useDebounced, useReminderEvents } from "../lib/hooks";
 import { cx } from "../lib/format";
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSetting, useUI, type SidebarGroup, type Theme } from "../stores/ui";
@@ -12,6 +12,7 @@ import { useToasts } from "../stores/toast";
 import { Kbd } from "./ui";
 import { normalizeScene, SceneBackdrop } from "./backdrop";
 import { installNow, RESTART_DELAY_S, startAutoUpdate, useUpdater } from "../lib/updater";
+import { useAllowance } from "../lib/allowance";
 
 const nextTheme: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
 const themeIcon = { light: Sun, dark: Moon, system: Monitor };
@@ -154,8 +155,11 @@ export function Sidebar() {
       </div>
 
       <div className={cx("space-y-3", collapsed ? "px-2" : "px-4")}>
-        <SideLink item={homeItem} collapsed={collapsed} />
-        <SideLink item={calendarItem} collapsed={collapsed} />
+        <div className="space-y-0.5">
+          {topItems.map((it) => (
+            <SideLink key={it.id} item={it} collapsed={collapsed} />
+          ))}
+        </div>
         <GroupSwitcher collapsed={collapsed} />
       </div>
 
@@ -199,8 +203,8 @@ export function Sidebar() {
 }
 
 const QUICK_CREATE = [
-  { label: "New to-do", path: "/life/todos?new=1" },
-  { label: "New event", path: "/life/events?new=1" },
+  { label: "New to-do", path: "/todos?new=1" },
+  { label: "New event", path: "/events?new=1" },
   { label: "New homework", path: "/academics/homework?new=1" },
   { label: "New exam", path: "/academics/exams?new=1" },
   { label: "New school note", path: "/academics/notes?new=1" },
@@ -373,6 +377,7 @@ export function Layout() {
   const setGroup = useUI((s) => s.setSidebarGroup);
   const location = useLocation();
   useReminderEvents();
+  useAllowance();
   const [rawScene] = useSetting<string>("background.scene", "neurons");
   const [motion] = useSetting<string>("background.motion", rawScene === "still" ? "still" : "animated");
   const scene = rawScene === "wash" ? "wash" : normalizeScene(rawScene);

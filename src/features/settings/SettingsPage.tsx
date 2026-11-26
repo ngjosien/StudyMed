@@ -375,7 +375,7 @@ export default function SettingsPage() {
         </Section>
         <Notifications />
         <BackgroundSection />
-        <Section title="Security" icon={Lock} desc="Your master password encrypts the Password vault and locked notes, and unlocks private Wishlists.">
+        <Section title="Security" icon={Lock} desc="Your master password encrypts the Password vault and locked notes.">
           <VaultSettings />
         </Section>
         <UpdatesSection />

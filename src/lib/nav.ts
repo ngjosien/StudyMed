@@ -5,7 +5,7 @@ import {
   ClipboardList,
   FileText,
   Flame,
-  Gift,
+  Sunrise,
   GraduationCap,
   Images,
   KeyRound,
@@ -14,7 +14,6 @@ import {
   Target,
   House,
   Percent,
-  Clock,
   Library,
   ListTodo,
   NotebookPen,
@@ -44,6 +43,11 @@ export interface NavGroup {
 
 export const homeItem: NavItem = { id: "home", label: "Home", path: "/home", icon: House };
 export const calendarItem: NavItem = { id: "calendar", label: "Calendar", path: "/calendar", icon: CalendarDays };
+/** Everyday pages that belong to both school and life, so they sit above the two groups. */
+export const routineItem: NavItem = { id: "routine", label: "Routine", path: "/routine", icon: Sunrise };
+export const todosItem: NavItem = { id: "todos", label: "To-Dos", path: "/todos", icon: ListTodo };
+export const eventsItem: NavItem = { id: "events", label: "Events", path: "/events", icon: PartyPopper };
+export const topItems = [homeItem, routineItem, calendarItem, todosItem, eventsItem];
 export const settingsItem: NavItem = { id: "settings", label: "Settings", path: "/settings", icon: Settings };
 
 export const groups: NavGroup[] = [
@@ -52,9 +56,7 @@ export const groups: NavGroup[] = [
     label: "Personal",
     icon: Heart,
     items: [
-      { id: "todos", label: "To-Dos", path: "/life/todos", icon: ListTodo },
       { id: "goals", label: "Goals", path: "/life/goals", icon: Target },
-      { id: "events", label: "Events", path: "/life/events", icon: PartyPopper },
       { id: "relationships", label: "Relationships", path: "/life/relationships", icon: Users },
       { id: "money", label: "Money", path: "/life/money", icon: Wallet },
       { id: "journal", label: "Journal", path: "/life/journal", icon: NotebookPen },
@@ -63,7 +65,6 @@ export const groups: NavGroup[] = [
       { id: "interests", label: "Interests", path: "/life/interests", icon: Sparkles },
       { id: "passwords", label: "Passwords", path: "/life/passwords", icon: KeyRound },
       { id: "important-notes", label: "Important Notes", path: "/life/important-notes", icon: StickyNote },
-      { id: "wishlist", label: "Wishlist", path: "/life/wishlist", icon: Gift },
     ],
   },
   {
@@ -74,7 +75,6 @@ export const groups: NavGroup[] = [
       { id: "modules", label: "Modules", path: "/academics/modules", icon: Library },
       { id: "timetable", label: "Timetable", path: "/academics/timetable", icon: School },
       { id: "grades", label: "Grades", path: "/academics/grades", icon: Percent },
-      { id: "routine", label: "Study Routine", path: "/academics/routine", icon: Clock },
       { id: "notes", label: "School Notes", path: "/academics/notes", icon: FileText },
       { id: "flashcards", label: "Spaced Repetition", path: "/academics/flashcards", icon: Repeat2 },
       { id: "homework", label: "Homework", path: "/academics/homework", icon: ClipboardList },
@@ -84,7 +84,7 @@ export const groups: NavGroup[] = [
   },
 ];
 
-export const allItems: NavItem[] = [homeItem, calendarItem, ...groups.flatMap((g) => g.items), settingsItem];
+export const allItems: NavItem[] = [...topItems, ...groups.flatMap((g) => g.items), settingsItem];
 
 /** Where a record of a given table lives in the app (used by search + calendar deep links). */
 export function entityRoute(type: string, id: number | string): string | null {
@@ -108,9 +108,9 @@ export function entityRoute(type: string, id: number | string): string | null {
     case "decks":
       return `/academics/flashcards?deck=${id}`;
     case "todos":
-      return `/life/todos?id=${id}`;
+      return `/todos?id=${id}`;
     case "events":
-      return `/life/events?id=${id}`;
+      return `/events?id=${id}`;
     case "people":
       return `/life/relationships?id=${id}`;
     case "journal_entries":

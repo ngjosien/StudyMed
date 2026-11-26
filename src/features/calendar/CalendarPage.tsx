@@ -599,7 +599,7 @@ export default function CalendarPage() {
                 { value: "week", label: "Week" },
               ]}
             />
-            <Button variant="primary" icon={Plus} onClick={() => nav("/life/events?new=1")}>
+            <Button variant="primary" icon={Plus} onClick={() => nav("/events?new=1")}>
               Event
             </Button>
           </div>

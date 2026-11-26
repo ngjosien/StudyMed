@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./components/layout";
 import SettingsPage from "./features/settings/SettingsPage";
 import CalendarPage from "./features/calendar/CalendarPage";
@@ -7,7 +7,7 @@ import ModuleDashboard from "./features/academics/ModuleDashboard";
 import NotesPage from "./features/academics/NotesPage";
 import RecallPage from "./features/academics/RecallPage";
 import GradesPage from "./features/academics/GradesPage";
-import RoutinePage from "./features/academics/RoutinePage";
+import RoutinePage from "./features/routine/RoutinePage";
 import HomePage from "./features/home/HomePage";
 import TimetablePage from "./features/academics/TimetablePage";
 import GoalsPage from "./features/life/GoalsPage";
@@ -24,7 +24,12 @@ import MomentsPage from "./features/life/MomentsPage";
 import InterestsPage from "./features/life/InterestsPage";
 import PasswordsPage from "./features/secure/PasswordsPage";
 import ImportantNotesPage from "./features/secure/ImportantNotesPage";
-import WishlistPage from "./features/secure/WishlistPage";
+
+/** Old addresses (e.g. /life/todos?id=3) still open the right record. */
+function KeepQuery({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: to, search }} replace />;
+}
 
 export default function App() {
   return (
@@ -41,13 +46,16 @@ export default function App() {
         <Route path="academics/grades" element={<GradesPage />} />
         <Route path="academics/timetable" element={<TimetablePage />} />
         <Route path="life/goals" element={<GoalsPage />} />
-        <Route path="academics/routine" element={<RoutinePage />} />
+        <Route path="routine" element={<RoutinePage />} />
+        <Route path="academics/routine" element={<Navigate to="/routine?tab=study" replace />} />
         <Route path="academics/homework" element={<HomeworkPage />} />
         <Route path="academics/exams" element={<ExamsPage />} />
         <Route path="academics/portfolio" element={<PortfolioPage />} />
 
-        <Route path="life/todos" element={<TodosPage />} />
-        <Route path="life/events" element={<EventsPage />} />
+        <Route path="todos" element={<TodosPage />} />
+        <Route path="events" element={<EventsPage />} />
+        <Route path="life/todos" element={<KeepQuery to="/todos" />} />
+        <Route path="life/events" element={<KeepQuery to="/events" />} />
         <Route path="life/relationships" element={<RelationshipsPage />} />
         <Route path="life/money" element={<MoneyPage />} />
         <Route path="life/journal" element={<JournalPage />} />
@@ -56,7 +64,6 @@ export default function App() {
         <Route path="life/interests" element={<InterestsPage />} />
         <Route path="life/passwords" element={<PasswordsPage />} />
         <Route path="life/important-notes" element={<ImportantNotesPage />} />
-        <Route path="life/wishlist" element={<WishlistPage />} />
 
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/home" replace />} />

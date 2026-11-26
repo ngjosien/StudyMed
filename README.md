@@ -29,18 +29,24 @@ The private signing key lives only at `%USERPROFILE%\.tauri\studymed.key` (its p
 - **Themes:** Settings → Appearance. Six pastel palettes (Cotton Candy, Blossom, Lavender, Sky, Butter, Mint) and three "old money" palettes (Heritage, Estate, Bordeaux), each in light and dark.
 - **Sidebar:** drag its right edge to resize, click the panel icon (or Ctrl+\\) to collapse it to icons, and switch between the **Personal** and **Academics** groups with the pills at the top.
 - **Fonts:** Settings → Appearance. Headings default to EB Garamond (bundled). Other heading fonts and old-money pairs are there too. SF Pro Display and Cooper Black are used when they are installed on the PC.
-- **Background:** Settings → Appearance → Background picks the scene: *Neurons* (firing cells), *DNA* (a to-scale B-DNA model in 3D), *Bloodstream* (3D red cells tumbling down a vessel), *X-ray* (a real chest radiograph on drafting paper, with a scan line and an ECG strip) or *Plain*. **Motion** switches any of them between animated and still. Animation pauses while the window is hidden, 3D scenes are capped at 40 fps, and Windows' "reduce animations" setting is respected.
-- **Pages have fixed layouts.** List pages are sorted by the pages their records link to (All, Events, Relationships, Homework, Exams and so on).
-- **Connect to a page** on a record links it to a record on another page, and the link shows from both sides. Choosing a module on homework, an exam, a note or a recall topic files it on that module's page.
+- **Background:** Settings → Appearance → Background picks a one-colour scene in your palette: *Neurons* (cells that fire and pass pulses along), *Cells* (a fine-line microscope field, with the odd cell dividing), *Heartbeat* (ECG traces on monitor paper), *X-ray* (a real chest radiograph on drafting paper) or *Plain*. **Motion** switches any of them between animated and still. Animation pauses while the window is hidden, and Windows' "reduce animations" setting is respected.
+- **Pages have fixed layouts.** List pages are sorted by what their records are for (All, Events, Relationships, Homework, Exams and so on).
+- **"What's it for?"** on a to-do or event picks an existing record it belongs to. For homework, exams and notes, choose the module first. A to-do for a piece of HBS homework then also shows on the HBS module page, and so does a rescheduled HBS class.
+- **Everyday pages** (Routine, Calendar, To-Dos, Events) sit at the top of the sidebar, above the Personal and Academics groups.
 
 ## Study tools
 
-- **Timetable:** add each class once and it repeats weekly, on the Timetable page and as the "Classes" layer on the calendar (which you can hide).
+- **Timetable:** add each class once and it repeats weekly, on the Timetable page and as the "Classes" layer on the calendar (which you can hide). Lesson kinds are general (lecture, tutorial, skills lab, practical, communication, PE, clinical, online) so they fit future modules too.
+- **Routine:** *Week plan* sets activities for each day (every day, weekdays, weekends, chosen days, or once). *Today* walks through the morning: check homework due in 3 days, exams in the next 30 days and to-dos left over, then write today's to-dos, then study. *Study targets* sets hours per module per week with no fixed time; log sessions and watch the bar fill by Sunday.
 - **Goals:** daily or weekly tick goals with optional steps, such as "By Tuesday, revise HBS and INP". Ticks belong to their day or week, so each new period starts empty and nothing is deleted.
 
-- **Grades:** official NP grade points and semester GPA ([source](https://www.np.edu.sg/admissions-enrolment/academic-matters)). NP does not publish mark ranges, so the cut-offs are editable estimates.
-- **Study Routine:** 45 minutes per credit unit each week, scaled by target grade, difficulty, distance behind target and exam proximity. It is a rule of thumb, not NP guidance. The working is shown, and nothing is saved until you press Save.
+- **Grades:** official NP grade points and semester GPA ([source](https://www.np.edu.sg/admissions-enrolment/academic-matters)). Enter each assessment's score as written: "20/30", "78%", or a letter ("B+" counts as the middle of its range). It's weighted by what that assessment is worth, so 20/30 on a 20% test counts 13.3 of 20 marks. NP does not publish mark ranges, so the cut-offs are editable estimates.
 - **Spaced Repetition:** recall on days 1, 3, 5, 7, 14, 21 and 28 after first learning, ticked by hand. Older flashcard decks stay reachable from that page when any exist.
+
+## Money
+
+- **Weekly allowance:** Money → This week → *Set weekly allowance*. Key it in once with its payday, and it's logged as money received every week (if StudyMed was closed on payday, it catches up next time it opens, never twice).
+- **Events** are Social, Relationship, School (CCA: Red Cross or Badminton, rescheduled class with its module, or school event) or Volunteering.
 
 ## Where your data lives
 
@@ -57,7 +63,7 @@ The private signing key lives only at `%USERPROFILE%\.tauri\studymed.key` (its p
 - **Master password / PIN** → Argon2id (19 MiB, 2 passes) → 256-bit key → **AES-256-GCM**.
 - The password is never stored; only an encrypted verifier is. The key lives in Rust memory while unlocked and is wiped on lock or after the auto-lock timeout (configurable in Settings → Security).
 - **Encrypted at rest:** every Password-vault entry (all fields), and the body of any Important Note you lock. Locked note bodies are never added to the search index.
-- **Private Wishlists:** a locked list's items are refused by the backend until the vault is unlocked. "Lock whole Wishlist" locks every list and gates the page.
+- **Wishlist** was removed from the app (saving goals in Money cover it). Its data is still in the database, untouched.
 - If you forget the master password, encrypted data cannot be recovered.
 
 ## Background activity

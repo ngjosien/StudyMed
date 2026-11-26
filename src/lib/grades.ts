@@ -104,3 +104,34 @@ export function studyNeed(module: Row, s: Standing, cut: Record<string, number>,
   if (daysToExam !== null && daysToExam >= 0 && daysToExam <= 28) times(daysToExam <= 14 ? 1.3 : 1.15, `exam in ${daysToExam} days`);
   return { minutes: Math.max(30, Math.round((hours * 60) / 30) * 30), why };
 }
+
+/**
+ * Reads a score the way it's written on the script: "20/30", "78%", "78", or a grade
+ * letter ("B+"). Returns the percentage for that assessment, or an error to show.
+ * A letter counts as the middle of its (estimated) mark range.
+ */
+export function parseScore(text: string, cut: Record<string, number>): { pct: number | null; error?: string } {
+  const t = text.trim().toUpperCase().replace(/\s+/g, "");
+  if (!t) return { pct: null };
+  const frac = t.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+  if (frac) {
+    const [got, outOf] = [Number(frac[1]), Number(frac[2])];
+    if (!(outOf > 0)) return { pct: null, error: "The total can't be 0" };
+    if (got > outOf) return { pct: null, error: `${got} is more than ${outOf}` };
+    return { pct: (got / outOf) * 100 };
+  }
+  const num = t.match(/^(\d+(?:\.\d+)?)%?$/);
+  if (num) {
+    const n = Number(num[1]);
+    return n <= 100 ? { pct: n } : { pct: null, error: "A percentage can't be over 100" };
+  }
+  if (t === "F") return { pct: cut.D / 2 };
+  if (cut[t] !== undefined) {
+    const above = TARGETS.filter((g) => g !== "AD" && cut[g] > cut[t]).map((g) => cut[g]);
+    const top = t === "AD" ? 100 : Math.min(100, ...above);
+    return { pct: (cut[t] + top) / 2 };
+  }
+  return { pct: null, error: 'Write it like "20/30", "78%" or "B+"' };
+}
+
+export const fmtPct = (n: number) => `${Math.round(n * 10) / 10}%`;

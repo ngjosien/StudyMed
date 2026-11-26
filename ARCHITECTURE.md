@@ -12,11 +12,11 @@ Schema: [`0001_init.sql`](src-tauri/migrations/0001_init.sql) (tables, calendar 
 | Migrations | `PRAGMA user_version` + ordered SQL files in `db.rs` | Upgrades existing databases on launch, atomically, after a `VACUUM INTO` backup. |
 | Crypto | Argon2id → 256-bit key → AES-256-GCM (`argon2`, `aes-gcm`, `zeroize`) in `crypto.rs` | Key lives only in Rust memory while unlocked; wiped on lock/auto-lock. |
 | Encrypted at rest | Vault entries (whole JSON payload), locked Important Note bodies | Titles of locked notes stay listable; locked bodies never enter the search index. |
-| Wishlist privacy | Per-list `locked` flag enforced by the backend (`wishlist_items_list` refuses while the vault is locked); "lock whole Wishlist" locks every list and gates the page | Contents are hidden, not encrypted — they're gift ideas, not secrets. |
+| Wishlist | Page removed in 0.3.0; tables and backend commands kept so existing data is never lost | Saving goals in Money cover the same need. |
 | Automation | Only `scheduler.rs`: keeps next reminders for bills/birthdays/active-recall digest, fires due reminders as native toasts, stamps `fired_at` | The single automation allowed by the spec. |
 | Recurrence | Bills and birthdays stored once, expanded per visible range in `recur.rs` / `calendar.rs` | Editing a bill updates every occurrence. |
 | Spaced repetition | `review_schedule` view derives the 1-3-5-7-14-21-28 days from the learned date; ticks live in `review_checks`. Legacy decks still use `srs.rs`. | Manual-only rule; nothing to reschedule. |
-| Page links | `record_links` plus the read-only `connections` view, which also exposes module and join-table links in both directions | One component (`components/connections.tsx`) serves every page. Vault and Wishlist records are not linkable. |
+| Page links | `record_links` plus the read-only `connections` view, which also exposes module and join-table links in both directions, plus to-dos/events linked through homework or exams to that module | One component (`components/connections.tsx`) serves every page. Vault and Wishlist records are not linkable. |
 | Search | One FTS5 table `search_fts` fed by triggers; powers `Ctrl+K` | Instant cross-database search. |
 | Editor | Markdown stored as text; toolbar + write/split/preview; GFM tables & checklists, `> [!NOTE]` callouts, KaTeX math, code; pasted images saved to `files\` | Portable, exportable notes. |
 | Frontend data | TanStack Query; every write goes through `useMutate()` which surfaces errors as toasts and refreshes all on-screen queries | No optimistic fake state — what you see is what's in SQLite. |
@@ -58,7 +58,7 @@ StudyMed/
       ├─ calendar/   CalendarPage (semantic zoom month↔week, layer filters, deep-link popovers)
       ├─ academics/  Modules · ModuleDashboard · Grades · Routine · Notes · Recall · Flashcards · Homework · Exams · Portfolio
       ├─ life/       Todos · Events · Relationships · Money · Journal · Habits · Moments · Interests
-      ├─ secure/     vault.tsx (lock gate) · Passwords · ImportantNotes · Wishlist
+      ├─ secure/     vault.tsx (lock gate) · Passwords · ImportantNotes
       └─ settings/   SettingsPage
 ```
 

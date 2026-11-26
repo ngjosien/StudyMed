@@ -5,7 +5,7 @@ import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { cx } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
-import { DEFAULT_CUTOFFS, GRADES, GRADE_NAMES, gpa, gradeForMark, neededFor, standing, TARGETS } from "../../lib/grades";
+import { DEFAULT_CUTOFFS, fmtPct, GRADES, GRADE_NAMES, gpa, gradeForMark, neededFor, parseScore, standing, TARGETS } from "../../lib/grades";
 import { Button, Card, Empty, Field, IconButton, Input, Modal, Page, PageHeader, Progress } from "../../components/ui";
 import { ChoiceField } from "../../components/pickers";
 import { useFormState } from "../../components/form";
@@ -36,6 +36,33 @@ function NumberCell({ value, label, max = 100, onSave }: { value: number | null 
       onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       placeholder="–"
       className="h-8 w-20 text-center"
+    />
+  );
+}
+
+/** A score as written on the script: "20/30", "78%", "78" or a letter. Saves when you leave it. */
+function ScoreCell({ comp, cut, onSave }: { comp: Row; cut: Record<string, number>; onSave: (patch: Row) => void }) {
+  const shown = comp.score_text ?? (comp.score == null ? "" : String(+Number(comp.score).toFixed(1)));
+  const [text, setText] = useState(shown);
+  useEffect(() => setText(shown), [shown]);
+  const commit = () => {
+    if (text.trim() === shown) return;
+    const { pct, error } = parseScore(text, cut);
+    if (error) {
+      toast.error(error);
+      return setText(shown);
+    }
+    onSave({ score_text: text.trim() || null, score: pct });
+  };
+  return (
+    <Input
+      aria-label="Score"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      placeholder="20/30, 78%, B+"
+      className="h-8 w-full text-center"
     />
   );
 }
@@ -100,19 +127,30 @@ function ModuleGrade({ module: m, cut, onEdit }: { module: Row; cut: Record<stri
         )}
 
         <div>
-          <div className="grid grid-cols-[1fr_80px_80px_32px] gap-2 px-1 pb-1 text-[11px] text-muted">
+          <div className="grid grid-cols-[1fr_72px_112px_96px_32px] gap-2 px-1 pb-1 text-[11px] text-muted">
             <span>Assessment</span>
-            <span className="text-center">Worth %</span>
-            <span className="text-center">My score %</span>
+            <span className="text-center">Worth</span>
+            <span className="text-center">My score</span>
+            <span className="text-center">Counts for</span>
           </div>
-          {comps.map((c) => (
-            <div key={c.id} className="grid grid-cols-[1fr_80px_80px_32px] items-center gap-2 py-1 text-sm">
-              <span className="truncate pl-1">{c.name}</span>
-              <NumberCell label="Worth" value={c.weight_pct} onSave={(v) => mutate(db.update("grading_components", c.id, { weight_pct: v ?? 0 }))} />
-              <NumberCell label="Score" value={c.score} onSave={(v) => mutate(db.update("grading_components", c.id, { score: v }))} />
-              <IconButton icon={X} label="Remove assessment" onClick={() => mutate(db.remove("grading_components", c.id))} />
-            </div>
-          ))}
+          {comps.map((c) => {
+            const has = c.score != null;
+            const earned = has ? (Number(c.weight_pct) * Number(c.score)) / 100 : null;
+            return (
+              <div key={c.id} className="grid grid-cols-[1fr_72px_112px_96px_32px] items-center gap-2 py-1 text-sm">
+                <span className="min-w-0 pl-1">
+                  <span className="block truncate">{c.name}</span>
+                  {has && c.score_text && !/%$|^d+(.d+)?$/.test(c.score_text) && <span className="block text-[11px] text-muted">= {fmtPct(Number(c.score))} on this</span>}
+                </span>
+                <NumberCell label="Worth" value={c.weight_pct} onSave={(v) => mutate(db.update("grading_components", c.id, { weight_pct: v ?? 0 }))} />
+                <ScoreCell comp={c} cut={cut} onSave={(patch) => mutate(db.update("grading_components", c.id, patch))} />
+                <span className="tabular text-center text-xs">
+                  {earned == null ? <span className="text-muted">of {+c.weight_pct}%</span> : <><strong>{+earned.toFixed(1)}</strong> of {+c.weight_pct}%</>}
+                </span>
+                <IconButton icon={X} label="Remove assessment" onClick={() => mutate(db.remove("grading_components", c.id))} />
+              </div>
+            );
+          })}
           <form
             className="mt-1 flex items-center gap-2"
             onSubmit={async (e) => {
@@ -143,8 +181,24 @@ function ModuleGrade({ module: m, cut, onEdit }: { module: Row; cut: Record<stri
           )}
           <div className="mt-3 flex items-center gap-2 text-xs text-muted">
             <Progress value={s.doneWeight} max={100} color={m.color} />
-            <span className="shrink-0">{s.doneWeight}% graded</span>
+            <span className="shrink-0">{+s.doneWeight.toFixed(1)}% of the module graded</span>
           </div>
+          {s.doneWeight > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-2xl bg-surface-2 px-3 py-2">
+                <div className="eyebrow !text-[9.5px]">Average so far</div>
+                <div className="font-display tabular text-xl">{fmtPct(s.average!)}</div>
+                <div className="text-[11px] text-muted">on the {+s.doneWeight.toFixed(1)}% graded, about {estimate}</div>
+              </div>
+              <div className="rounded-2xl bg-surface-2 px-3 py-2">
+                <div className="eyebrow !text-[9.5px]">Marks banked</div>
+                <div className="font-display tabular text-xl">{+s.secured.toFixed(1)} / 100</div>
+                <div className="text-[11px] text-muted">
+                  {s.remaining > 0 ? `${+s.remaining.toFixed(1)} still to come` : "Everything is graded"}
+                </div>
+              </div>
+            </div>
+          )}
           {s.totalWeight > 0 && Math.abs(s.totalWeight - 100) > 0.01 && (
             <p className="mt-1 text-xs text-danger">The weights add up to {s.totalWeight}%. They need to total 100% for this to be right.</p>
           )}

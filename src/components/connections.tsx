@@ -8,6 +8,9 @@ import { RECORDS, routeOf } from "../lib/records";
 import { cx } from "../lib/format";
 import { Input, Popover } from "./ui";
 
+/** Records that live under a module, so the picker can filter by module. */
+const MODULE_SCOPED = new Set(["homework", "exams", "school_notes", "review_topics", "decks", "class_slots"]);
+
 export interface Ref {
   type: string;
   id: number;
@@ -85,9 +88,19 @@ export function LinkPicker({
   const kinds = only ?? Object.keys(RECORDS);
   const [type, setType] = useState(kinds[0]);
   const [q, setQ] = useState("");
+  const [moduleId, setModuleId] = useState<number | null>(null);
   const kind = RECORDS[type];
   const all = useRows(type, type === "todos" ? { parent_id: null } : undefined, "id desc").rows;
-  const list: Row[] = all.filter((r) => !(type === self.type && r.id === self.id) && String(kind.title(r)).toLowerCase().includes(q.toLowerCase()));
+  const modules = useRows("modules", { archived: 0 }, "code").rows;
+  // Homework, exams and notes belong to a module: pick the module first.
+  const byModule = MODULE_SCOPED.has(type) && modules.length > 0;
+  const moduleOf = new Map(modules.map((m) => [m.id, m]));
+  const list: Row[] = all.filter(
+    (r) =>
+      !(type === self.type && r.id === self.id) &&
+      (!byModule || moduleId == null || r.module_id === moduleId) &&
+      String(kind.title(r)).toLowerCase().includes(q.toLowerCase()),
+  );
   return (
     <div className="p-1.5">
       <div className="mb-2 flex flex-wrap gap-1">
@@ -97,7 +110,10 @@ export function LinkPicker({
             <button
               type="button"
               key={k}
-              onClick={() => setType(k)}
+              onClick={() => {
+                setType(k);
+                setModuleId(null);
+              }}
               className={cx("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px]", k === type ? "bg-accent text-accent-fg" : "bg-surface-2 hover:bg-accent-soft")}
             >
               <K.icon size={11} />
@@ -106,6 +122,22 @@ export function LinkPicker({
           );
         })}
       </div>
+      {byModule && (
+        <div className="mb-2 flex flex-wrap gap-1 border-t border-line pt-2">
+          <span className="eyebrow mr-1 self-center !text-[9px]">Module</span>
+          {[{ id: null as number | null, code: "All", color: undefined as string | undefined }, ...modules.map((m) => ({ id: m.id as number | null, code: m.code as string, color: m.color as string }))].map((m) => (
+            <button
+              type="button"
+              key={m.id ?? "all"}
+              onClick={() => setModuleId(m.id)}
+              className={cx("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px]", moduleId === m.id ? "bg-accent text-accent-fg" : "bg-surface-2 hover:bg-accent-soft")}
+            >
+              {m.color && <span className="h-2 w-2 rounded-full" style={{ background: m.color }} />}
+              {m.code}
+            </button>
+          ))}
+        </div>
+      )}
       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${kind.label.toLowerCase()}`} />
       <div className="mt-1.5 max-h-52 overflow-y-auto">
         {!list.length && <p className="p-3 text-center text-xs text-muted">Nothing in {kind.label} yet.</p>}
@@ -113,6 +145,7 @@ export function LinkPicker({
           const on = linked.some((l) => l.type === type && l.id === r.id);
           return (
             <button type="button" key={r.id} onClick={() => onToggle({ type, id: r.id }, !on)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-accent-soft">
+              {byModule && moduleOf.get(r.module_id) && <span className="shrink-0 text-[10px] font-semibold text-muted">{moduleOf.get(r.module_id)!.code}</span>}
               <span className="flex-1 truncate">{kind.title(r)}</span>
               {on && <Check size={14} className="text-accent" />}
             </button>
@@ -171,7 +204,7 @@ export function Connections({
         width={390}
         trigger={({ toggle: open }) => (
           <button type="button" onClick={open} className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-accent/50 px-3 py-1.5 text-xs text-accent hover:bg-accent-soft">
-            <Link2 size={13} /> Connect to a page
+            <Link2 size={13} /> {items.length ? "Add another" : "What's it for?"}
           </button>
         )}
       >

@@ -102,8 +102,6 @@ export const api = {
   noteReadLocked: (id: number) => invoke<string>("note_read_locked", { id }),
   noteSaveLocked: (id: number, body: string) => invoke<void>("note_save_locked", { id, body }),
   noteUnlock: (id: number) => invoke<void>("note_unlock", { id }),
-  wishlistSetLocked: (id: number, locked: boolean) => invoke<void>("wishlist_set_locked", { id, locked }),
-  wishlistItems: (wishlistId: number) => invoke<Row[]>("wishlist_items_list", { wishlistId }),
 };
 
 export const isVaultLocked = (e: unknown) => String(e).includes("VAULT_LOCKED");
