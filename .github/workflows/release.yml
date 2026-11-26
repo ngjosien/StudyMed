@@ -22,7 +22,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       release: ${{ steps.v.outputs.release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: v
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,9 +41,9 @@ jobs:
     if: needs.check.outputs.release == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -71,3 +71,4 @@ jobs:
           releaseBody: Download StudyMed_${{ needs.check.outputs.version }}_x64-setup.exe below to install. Installed copies update themselves automatically.
           releaseDraft: false
           prerelease: false
+          updaterJsonPreferNsis: true
