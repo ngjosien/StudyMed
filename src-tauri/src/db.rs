@@ -14,6 +14,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0004_fixed_pages.sql"),
     include_str!("../migrations/0005_timetable_goals.sql"),
     include_str!("../migrations/0006_routine_links.sql"),
+    include_str!("../migrations/0007_focus_beats.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -145,6 +146,41 @@ mod tests {
         conn.execute("DELETE FROM modules WHERE id = 1", []).unwrap();
         let classes: i64 = conn.query_row("SELECT count(*) FROM class_slots", [], |r| r.get(0)).unwrap();
         assert_eq!(classes, 0);
+    }
+
+    #[test]
+    fn focus_sessions_and_todos_earn_beats() {
+        let conn = test_conn();
+        let bal = |c: &Connection| -> i64 { c.query_row("SELECT coalesce(sum(amount),0) FROM beats", [], |r| r.get(0)).unwrap() };
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO todos(id, title) VALUES (1, 'Read chapter 4');
+             INSERT INTO focus_sessions(id, kind, module_id, planned_minutes, started_at, focus_minutes) VALUES (1, 'academic', 1, 60, '2026-11-26T09:00', 75);
+             INSERT INTO focus_sessions(id, kind, label, planned_minutes, started_at, focus_minutes) VALUES (2, 'other', 'Reading', 30, '2026-11-26T20:00', 20);",
+        )
+        .unwrap();
+        assert_eq!(bal(&conn), 95);
+        // Only the academic session counts toward the module's study log.
+        let logged: i64 = conn.query_row("SELECT coalesce(sum(minutes),0) FROM study_logs WHERE module_id = 1 AND date = '2026-11-26'", [], |r| r.get(0)).unwrap();
+        assert_eq!(logged, 75);
+        // Ticking a to-do earns 5; ticking it twice or un-ticking doesn't farm.
+        conn.execute_batch("UPDATE todos SET done = 1 WHERE id = 1; UPDATE todos SET done = 1 WHERE id = 1;").unwrap();
+        assert_eq!(bal(&conn), 100);
+        conn.execute_batch("UPDATE todos SET done = 0 WHERE id = 1;").unwrap();
+        assert_eq!(bal(&conn), 95);
+        // Editing a session's minutes re-counts both the study log and beats.
+        conn.execute_batch("UPDATE focus_sessions SET focus_minutes = 50 WHERE id = 1;").unwrap();
+        assert_eq!(bal(&conn), 70);
+        let logged: i64 = conn.query_row("SELECT coalesce(sum(minutes),0) FROM study_logs", [], |r| r.get(0)).unwrap();
+        assert_eq!(logged, 50);
+        // Deleting a session removes what it earned and logged.
+        conn.execute_batch("DELETE FROM focus_sessions WHERE id = 1;").unwrap();
+        assert_eq!(bal(&conn), 20);
+        let logs: i64 = conn.query_row("SELECT count(*) FROM study_logs", [], |r| r.get(0)).unwrap();
+        assert_eq!(logs, 0);
+        // Spending.
+        conn.execute_batch("INSERT INTO rewards(id, name, cost) VALUES (1, 'Bubble tea', 15); INSERT INTO beats(amount, reason, source_type, source_id) VALUES (-15, 'Treat · Bubble tea', 'rewards', 1);").unwrap();
+        assert_eq!(bal(&conn), 5);
     }
 
     #[test]

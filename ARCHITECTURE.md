@@ -1,7 +1,7 @@
 # StudyMed — Architecture
 
 Tauri 2 (Rust) + React 19 + TypeScript + Tailwind 4, SQLite via `rusqlite` (bundled, FTS5).
-Schema: [`0001_init.sql`](src-tauri/migrations/0001_init.sql) (tables, calendar view) and [`0002_triggers_seed.sql`](src-tauri/migrations/0002_triggers_seed.sql) (search triggers, cleanup triggers, default data). [`0004_fixed_pages.sql`](src-tauri/migrations/0004_fixed_pages.sql) adds page links, grades, routine, 1-3-5-7 recall and saving goals; it only adds, and the older `db_*` property tables remain but are unused.
+Schema: [`0001_init.sql`](src-tauri/migrations/0001_init.sql) (tables, calendar view) and [`0002_triggers_seed.sql`](src-tauri/migrations/0002_triggers_seed.sql) (search triggers, cleanup triggers, default data). [`0004_fixed_pages.sql`](src-tauri/migrations/0004_fixed_pages.sql) adds page links, grades, routine, 1-3-5-7 recall and saving goals; it only adds, and the older `db_*` property tables remain but are unused. [`0007_focus_beats.sql`](src-tauri/migrations/0007_focus_beats.sql) adds focus sessions, the `beats` ledger and treats; triggers turn saved sessions into study-log minutes and beats, and ticked to-dos into beats.
 
 ## Key decisions
 

@@ -25,6 +25,8 @@ import {
   Wallet,
   BookOpen,
   Heart,
+  Timer,
+  Gift,
 } from "lucide-react";
 
 export interface NavItem {
@@ -47,7 +49,9 @@ export const calendarItem: NavItem = { id: "calendar", label: "Calendar", path: 
 export const routineItem: NavItem = { id: "routine", label: "Routine", path: "/routine", icon: Sunrise };
 export const todosItem: NavItem = { id: "todos", label: "To-Dos", path: "/todos", icon: ListTodo };
 export const eventsItem: NavItem = { id: "events", label: "Events", path: "/events", icon: PartyPopper };
-export const topItems = [homeItem, routineItem, calendarItem, todosItem, eventsItem];
+export const focusItem: NavItem = { id: "focus", label: "Focus", path: "/focus", icon: Timer };
+export const rewardsItem: NavItem = { id: "rewards", label: "Rewards", path: "/rewards", icon: Gift };
+export const topItems = [homeItem, routineItem, focusItem, calendarItem, todosItem, eventsItem];
 export const settingsItem: NavItem = { id: "settings", label: "Settings", path: "/settings", icon: Settings };
 
 export const groups: NavGroup[] = [
@@ -84,7 +88,7 @@ export const groups: NavGroup[] = [
   },
 ];
 
-export const allItems: NavItem[] = [...topItems, ...groups.flatMap((g) => g.items), settingsItem];
+export const allItems: NavItem[] = [...topItems, rewardsItem, ...groups.flatMap((g) => g.items), settingsItem];
 
 /** Where a record of a given table lives in the app (used by search + calendar deep links). */
 export function entityRoute(type: string, id: number | string): string | null {
@@ -107,6 +111,8 @@ export function entityRoute(type: string, id: number | string): string | null {
       return `/academics/flashcards?topic=${id}`;
     case "decks":
       return `/academics/flashcards?deck=${id}`;
+    case "focus":
+      return "/focus";
     case "todos":
       return `/todos?id=${id}`;
     case "events":
@@ -129,6 +135,7 @@ export function entityRoute(type: string, id: number | string): string | null {
 }
 
 export const ENTITY_LABEL: Record<string, string> = {
+  focus: "Focus",
   school_notes: "Note",
   homework: "Homework",
   exams: "Exam",

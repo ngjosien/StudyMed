@@ -2,7 +2,7 @@
 // what's due, today's to-dos and study, and weekly study targets with no fixed time.
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, BookOpen, CalendarClock, Check, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Trash2, Undo2 } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarClock, Check, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useNow, useRows } from "../../lib/hooks";
 import { addDays, daysUntil, fmtDateShort, fmtDateTime, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
@@ -184,6 +184,9 @@ function StudyRow({ m, target, done, compact }: { m: Row; target?: Row; done: nu
           {fmtMinutes(done) || "0m"}
           {goal ? ` / ${fmtMinutes(goal)}` : ""}
         </span>
+        <Link to={`/focus?module=${m.id}`} title={`Start a focus session for ${m.code}`} className="inline-flex h-7 items-center gap-1 rounded-xl px-2 text-xs font-medium text-accent hover:bg-accent-soft">
+          <Timer size={13} /> Focus
+        </Link>
         <Button size="sm" variant="ghost" onClick={() => log(30)}>
           +30m
         </Button>

@@ -29,6 +29,7 @@ const TABLES: &[&str] = &[
     "weekly_limits", "goal_items", "goal_deposits",
     "class_slots", "tick_goals", "tick_goal_steps", "tick_goal_ticks",
     "routine_items", "routine_ticks", "study_targets",
+    "focus_sessions", "beats", "rewards",
 ];
 
 /// Tables that must not be listed generically (contents gated by the vault).
@@ -522,6 +523,14 @@ pub fn query_named(db: State<'_, Db>, name: String, params: Vec<Value>) -> AppRe
             // reviews per day for the last 30 days
             "SELECT substr(reviewed_at,1,10) AS day, count(*) AS n FROM card_reviews
              WHERE reviewed_at >= date('now','localtime','-30 days') GROUP BY day ORDER BY day"
+        }
+        "beats_summary" => {
+            // ?1 = today 'YYYY-MM-DD', ?2 = week start 'YYYY-MM-DD'
+            "SELECT coalesce(sum(amount),0) AS balance,
+                    coalesce(sum(CASE WHEN amount > 0 AND substr(created_at,1,10) = ?1 THEN amount END),0) AS today,
+                    coalesce(sum(CASE WHEN amount > 0 AND substr(created_at,1,10) >= ?2 THEN amount END),0) AS week,
+                    coalesce(sum(CASE WHEN amount > 0 THEN amount END),0) AS lifetime
+             FROM beats"
         }
         _ => return Err(AppError::msg(format!("unknown query '{name}'"))),
     };

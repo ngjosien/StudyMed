@@ -13,6 +13,8 @@ import { Kbd } from "./ui";
 import { normalizeScene, SceneBackdrop } from "./backdrop";
 import { installNow, RESTART_DELAY_S, startAutoUpdate, useUpdater } from "../lib/updater";
 import { useAllowance } from "../lib/allowance";
+import { BeatsChip } from "./beats";
+import { FocusFinish, FocusPill } from "./focus-widgets";
 
 const nextTheme: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
 const themeIcon = { light: Sun, dark: Moon, system: Monitor };
@@ -160,6 +162,7 @@ export function Sidebar() {
             <SideLink key={it.id} item={it} collapsed={collapsed} />
           ))}
         </div>
+        <FocusPill collapsed={collapsed} />
         <GroupSwitcher collapsed={collapsed} />
       </div>
 
@@ -173,6 +176,7 @@ export function Sidebar() {
         <div className={cx(!collapsed && "flex-1")}>
           <SideLink item={settingsItem} collapsed={collapsed} />
         </div>
+        <BeatsChip collapsed={collapsed} />
         <button
           type="button"
           onClick={() => setTheme(nextTheme[theme])}
@@ -416,6 +420,7 @@ export function Layout() {
         <CommandPalette />
         <Toasts />
         <UpdateBanner />
+        <FocusFinish />
       </div>
     </>
   );
