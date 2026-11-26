@@ -29,7 +29,7 @@ The private signing key lives only at `%USERPROFILE%\.tauri\studymed.key` (its p
 - **Themes:** Settings → Appearance. Six pastel palettes (Cotton Candy, Blossom, Lavender, Sky, Butter, Mint) and three "old money" palettes (Heritage, Estate, Bordeaux), each in light and dark.
 - **Sidebar:** drag its right edge to resize, click the panel icon (or Ctrl+\\) to collapse it to icons, and switch between the **Personal** and **Academics** groups with the pills at the top.
 - **Fonts:** Settings → Appearance. Headings default to EB Garamond (bundled). Other heading fonts and old-money pairs are there too. SF Pro Display and Cooper Black are used when they are installed on the PC.
-- **Background:** Settings → Appearance → Background. *Neurons firing* (default) is a canvas of neurons that fire and send pulses along their axons, with a slowly turning DNA helix behind them. It stops drawing while the window is hidden. *Neurons, still* and *Plain wash* are calmer, and Windows' "reduce animations" setting is respected.
+- **Background:** Settings → Appearance → Background picks the scene: *Neurons* (firing cells), *DNA* (a to-scale B-DNA model in 3D), *Bloodstream* (3D red cells tumbling down a vessel), *X-ray* (a real chest radiograph on drafting paper, with a scan line and an ECG strip) or *Plain*. **Motion** switches any of them between animated and still. Animation pauses while the window is hidden, 3D scenes are capped at 40 fps, and Windows' "reduce animations" setting is respected.
 - **Pages have fixed layouts.** List pages are sorted by the pages their records link to (All, Events, Relationships, Homework, Exams and so on).
 - **Connect to a page** on a record links it to a record on another page, and the link shows from both sides. Choosing a module on homework, an exam, a note or a recall topic files it on that module's page.
 
@@ -95,6 +95,11 @@ Other scripts:
 | `cd src-tauri && cargo test` | Rust unit tests (schema, cascades, search, SM-2, recurrence, crypto, scheduler) |
 
 On this PC, Rust build output goes to `%LOCALAPPDATA%\StudyMed-build\target` (set in `.cargo/config.toml`, which isn't committed because it holds a local path) so OneDrive doesn't sync gigabytes of build files. `node_modules` still lives in the project folder; if OneDrive struggles with it, right-click the folder → *Always keep on this device*.
+
+## Credits
+
+- Chest radiograph in the X-ray background: "Chest Xray PA 3-8-2010" by Stillwaterising, Wikimedia Commons, released under CC0 (public domain).
+- 3D scenes use [three.js](https://threejs.org) (MIT).
 
 ## Structure
 

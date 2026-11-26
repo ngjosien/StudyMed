@@ -176,35 +176,61 @@ export default function HomePage() {
 
   return (
     <Page className="space-y-4 pt-6">
-      <header className="anim-item relative overflow-hidden rounded-[22px] px-8 py-7 hero-sheen">
-        <img src="/app-icon.svg" alt="" className="pointer-events-none absolute top-1/2 right-8 hidden h-32 w-32 -translate-y-1/2 rounded-[28px] opacity-90 shadow-[0_18px_40px_-18px_rgba(54,16,28,0.7)] lg:block" />
-        <p className="eyebrow">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
-        <h1 className="font-display text-[28px] leading-tight">{hello}</h1>
-        <input
-          value={draft ?? why}
-          onFocus={() => setDraft(why)}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            if (draft !== null) setWhy(draft.trim());
-            setDraft(null);
-          }}
-          placeholder="Write the reason you want to do medicine. It'll greet you here."
-          className="relative mt-1 w-full max-w-2xl bg-transparent text-[15px] outline-none placeholder:text-fg/45"
-        />
-        <div className="relative mt-4 flex flex-wrap gap-1.5">
+      <header className="glass anim-item relative overflow-hidden rounded-[18px]">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="px-8 pt-7 pb-6">
+            <p className="eyebrow">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+            <h1 className="font-display mt-1 text-[30px] leading-tight">{hello}</h1>
+            <div className="mt-4 flex max-w-2xl gap-3">
+              <span className="font-display -mt-2 text-[40px] leading-none text-accent/60 select-none">“</span>
+              <div className="min-w-0 flex-1 border-l border-accent/30 pl-4">
+                <input
+                  value={draft ?? why}
+                  onFocus={() => setDraft(why)}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => {
+                    if (draft !== null) setWhy(draft.trim());
+                    setDraft(null);
+                  }}
+                  placeholder="Write the reason you want to do medicine. It'll greet you here."
+                  className="font-display w-full bg-transparent text-[17px] italic outline-none placeholder:text-fg/40"
+                />
+                <p className="eyebrow mt-1 !text-[9.5px]">Why I'm here</p>
+              </div>
+            </div>
+          </div>
+          <dl className="grid grid-cols-2 content-center gap-x-5 gap-y-4 border-t border-line px-7 py-6 lg:border-t-0 lg:border-l">
+            {[
+              ["Today", todayItems.length, "/calendar"],
+              ["To recall", recalls.length, "/academics/flashcards"],
+              ["Goals open", goalsLeft, "/life/goals"],
+              ["This week", fmtMoney(spent), "/life/money"],
+            ].map(([label, value, to]) => (
+              <Link key={label as string} to={to as string} className="group">
+                <dt className="eyebrow !text-[9.5px] group-hover:!text-accent">{label}</dt>
+                <dd className="font-display tabular mt-0.5 text-[22px] leading-none">{value}</dd>
+              </Link>
+            ))}
+          </dl>
+        </div>
+        <nav className="flex flex-wrap items-center border-t border-line px-6 py-2 text-[12.5px]">
+          <span className="eyebrow mr-3 !text-[9.5px]">New</span>
           {[
             ["To-do", "/life/todos?new=1"],
             ["Event", "/life/events?new=1"],
             ["Homework", "/academics/homework?new=1"],
             ["Spending", "/life/money?new=1"],
             ["Learned something", "/academics/flashcards?new=1"],
-          ].map(([label, to]) => (
-            <Link key={label} to={to} className="inline-flex items-center gap-1 rounded-full bg-surface-solid/70 px-3.5 py-1.5 text-xs shadow-sm backdrop-blur hover:bg-surface-solid">
-              <Plus size={12} />
-              {label}
-            </Link>
+          ].map(([label, to], i) => (
+            <span key={label} className="flex items-center">
+              {i > 0 && <span className="mx-1 h-3 w-px bg-line" />}
+              <Link to={to} className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 font-medium text-fg/80 hover:bg-surface-2 hover:text-accent">
+                <Plus size={12} strokeWidth={2.25} />
+                {label}
+              </Link>
+            </span>
           ))}
-        </div>
+        </nav>
       </header>
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">

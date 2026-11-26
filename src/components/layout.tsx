@@ -10,7 +10,7 @@ import { cx } from "../lib/format";
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSetting, useUI, type SidebarGroup, type Theme } from "../stores/ui";
 import { useToasts } from "../stores/toast";
 import { Kbd } from "./ui";
-import { NeuralBackdrop } from "./neural";
+import { normalizeScene, SceneBackdrop } from "./backdrop";
 import { installNow, RESTART_DELAY_S, startAutoUpdate, useUpdater } from "../lib/updater";
 
 const nextTheme: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
@@ -373,7 +373,9 @@ export function Layout() {
   const setGroup = useUI((s) => s.setSidebarGroup);
   const location = useLocation();
   useReminderEvents();
-  const [scene] = useSetting<string>("background.scene", "neural");
+  const [rawScene] = useSetting<string>("background.scene", "neurons");
+  const [motion] = useSetting<string>("background.motion", rawScene === "still" ? "still" : "animated");
+  const scene = rawScene === "wash" ? "wash" : normalizeScene(rawScene);
   useEffect(() => startAutoUpdate(), []);
 
   // Keep the sidebar folder in sync with the page you're on.
@@ -398,7 +400,7 @@ export function Layout() {
 
   return (
     <>
-      <div className="app-backdrop">{scene !== "wash" && <NeuralBackdrop still={scene === "still"} />}</div>
+      <div className="app-backdrop">{scene !== "wash" && <SceneBackdrop scene={scene} still={motion === "still"} />}</div>
       <div className="relative z-10 flex h-screen gap-3 overflow-hidden p-3 text-fg">
         <Sidebar />
         <main className="relative min-w-0 flex-1 overflow-y-auto rounded-[18px]">

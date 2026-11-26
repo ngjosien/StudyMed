@@ -4,7 +4,7 @@ import { disable as disableAutostart, enable as enableAutostart, isEnabled as is
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { ChoiceField, DateTimeField, TimeField } from "../../components/pickers";
-import { Bell, Database, FolderOpen, Lock, Monitor, Moon, Settings, Sun, Trash2, Download, Copy, Power, RefreshCw } from "lucide-react";
+import { Bell, Database, FolderOpen, Lock, Monitor, Moon, Settings, Sun, Trash2, Download, Copy, Power, RefreshCw, Play, Pause } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppInfo, useMutate } from "../../lib/hooks";
 import { fmtDateTime, toDateTimeStr, addMinutes } from "../../lib/dates";
@@ -13,6 +13,7 @@ import { BODY_FONTS, FONT_PAIRS, HEAD_FONTS, PALETTES, useSetting, useUI, type T
 import { cx } from "../../lib/format";
 import { toast } from "../../stores/toast";
 import { VaultSettings } from "../secure/vault";
+import { normalizeScene, SCENES } from "../../components/backdrop";
 import { checkForUpdate, installNow, useUpdater } from "../../lib/updater";
 
 function Section({ title, icon: Icon, children, desc }: { title: string; icon: typeof Bell; children: ReactNode; desc?: string }) {
@@ -130,19 +131,27 @@ function Notifications() {
 }
 
 function ScenePicker() {
-  const [scene, setScene] = useSetting<string>("background.scene", "neural");
+  const [raw, setScene] = useSetting<string>("background.scene", "neurons");
+  const [motion, setMotion] = useSetting<string>("background.motion", raw === "still" ? "still" : "animated");
+  const scene = normalizeScene(raw === "wash" ? "wash" : raw);
   return (
-    <Field label="Background">
-      <ChoiceField
-        options={[
-          { value: "neural", label: "Neurons firing" },
-          { value: "still", label: "Neurons, still" },
-          { value: "wash", label: "Plain wash" },
-        ]}
-        value={scene}
-        onChange={(v) => setScene(String(v ?? "neural"))}
-      />
-    </Field>
+    <div className="space-y-3">
+      <Field label="Background">
+        <ChoiceField options={SCENES.map((s) => ({ value: s.id, label: s.label }))} value={scene} onChange={(v) => setScene(String(v ?? "neurons"))} />
+      </Field>
+      {scene !== "wash" && (
+        <Field label="Motion">
+          <Segmented<string>
+            value={motion}
+            onChange={setMotion}
+            options={[
+              { value: "animated", label: "Animated", icon: Play },
+              { value: "still", label: "Still", icon: Pause },
+            ]}
+          />
+        </Field>
+      )}
+    </div>
   );
 }
 
