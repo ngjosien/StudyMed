@@ -1,6 +1,6 @@
 [package]
 name = "studymed"
-version = "0.5.0"
+version = "0.6.0"
 description = "StudyMed — local-first life organizer and academic workspace"
 edition = "2021"
 

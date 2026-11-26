@@ -10,6 +10,7 @@ import GradesPage from "./features/academics/GradesPage";
 import RoutinePage from "./features/routine/RoutinePage";
 import FocusPage from "./features/focus/FocusPage";
 import RewardsPage from "./features/rewards/RewardsPage";
+import GardenPage from "./features/garden/GardenPage";
 import HomePage from "./features/home/HomePage";
 import TimetablePage from "./features/academics/TimetablePage";
 import GoalsPage from "./features/life/GoalsPage";
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="routine" element={<RoutinePage />} />
         <Route path="focus" element={<FocusPage />} />
         <Route path="rewards" element={<RewardsPage />} />
+        <Route path="garden" element={<GardenPage />} />
         <Route path="academics/routine" element={<Navigate to="/routine?tab=study" replace />} />
         <Route path="academics/homework" element={<HomeworkPage />} />
         <Route path="academics/exams" element={<ExamsPage />} />

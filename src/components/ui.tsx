@@ -11,7 +11,7 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 import { createPortal } from "react-dom";
-import { X, Star, Trash2 } from "lucide-react";
+import { X, Star, Trash2, Check } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { cx } from "../lib/format";
@@ -424,6 +424,36 @@ export function Progress({ value, max = 100, color, className }: { value: number
   return (
     <div className={cx("h-2 w-full overflow-hidden rounded-full bg-surface-2", className)}>
       <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-[var(--ease)]" style={{ width: `${p}%`, background: color }} />
+    </div>
+  );
+}
+
+/** The savings-goal bar: a thick track with checkpoints at 25, 50, 75 and 100% that fill as you pass them. */
+export function MilestoneBar({ value, max, color = "var(--accent)", className, label }: { value: number; max: number; color?: string; className?: string; label?: string }) {
+  const done = max > 0 ? Math.max(0, (value / max) * 100) : 0;
+  return (
+    <div
+      className={cx("relative h-4 rounded-full bg-surface-solid/70", className)}
+      role="progressbar"
+      aria-label={label}
+      aria-valuenow={Math.round(Math.min(100, done))}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div
+        className="h-full rounded-full transition-[width] duration-700 ease-[var(--ease)]"
+        style={{ width: `${Math.min(100, done)}%`, background: `color-mix(in srgb, ${color} 75%, var(--fg))` }}
+      />
+      {[25, 50, 75, 100].map((m) => (
+        <span
+          key={m}
+          title={`${m}%`}
+          className={cx("absolute top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-surface-solid", done < m && "bg-surface-2")}
+          style={{ left: `${m === 100 ? 98 : m}%`, background: done >= m ? color : undefined, color: "#3a2330" }}
+        >
+          {done >= m && <Check size={10} strokeWidth={4} />}
+        </span>
+      ))}
     </div>
   );
 }

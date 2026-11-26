@@ -8,13 +8,14 @@ import { fmtDate, fmtDateTime, startOfWeek, toDateStr } from "../../lib/dates";
 import { cx, fmtMinutes } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
 import { DEFAULT_CUTOFFS, gradeForMark, neededFor, standing } from "../../lib/grades";
-import { Badge, Button, Card, Checkbox, Page, Progress } from "../../components/ui";
+import { Badge, Button, Card, Checkbox, MilestoneBar, Page, Progress } from "../../components/ui";
 import { useFormState } from "../../components/form";
 import { MarkdownView } from "../../components/markdown";
 import { Connections } from "../../components/connections";
 import { LinkChips } from "../../components/linked";
 import { STATUS_COLOR } from "./common";
 import { ExamForm, HomeworkForm, ModuleForm, PortfolioForm, TopicForm } from "./forms";
+import { WeeklyContent } from "./WeeklyContent";
 
 function Panel({ title, icon: Icon, action, children }: { title: string; icon: LucideIcon; action?: ReactNode; children: ReactNode }) {
   return (
@@ -93,6 +94,8 @@ export default function ModuleDashboard() {
         <p className="mt-2 text-sm opacity-75">{[m.term, m.credits && `${m.credits} credits`, m.lecturer, m.lecturer_contact].filter(Boolean).join(" · ")}</p>
       </div>
 
+      <WeeklyContent moduleId={id} />
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
           <Panel title="Homework" icon={ClipboardList} action={<Button size="sm" icon={Plus} onClick={() => hwForm.openNew({ module_id: id })}>Add</Button>}>
@@ -168,7 +171,7 @@ export default function ModuleDashboard() {
               <None>No weekly target yet.</None>
             ) : (
               <div className="space-y-1.5 p-2">
-                <Progress value={studied} max={target.minutes_per_week} color={m.color} />
+                <MilestoneBar value={studied} max={target.minutes_per_week} color={m.color} label="Study this week" />
                 <p className="text-xs text-muted">
                   {fmtMinutes(studied) || "0m"} of {fmtMinutes(target.minutes_per_week)} this week
                 </p>

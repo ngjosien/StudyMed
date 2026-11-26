@@ -1,7 +1,7 @@
 {
   "name": "studymed",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -41,6 +41,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "three": "^0.170.0",
     "zustand": "^5.1.0"
   },
   "devDependencies": {
@@ -48,6 +49,7 @@
     "@tauri-apps/cli": "^2.12.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.170.0",
     "@vitejs/plugin-react": "^6.3.0",
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",

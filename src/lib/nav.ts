@@ -27,6 +27,7 @@ import {
   Heart,
   Timer,
   Gift,
+  Sprout,
 } from "lucide-react";
 
 export interface NavItem {
@@ -51,7 +52,8 @@ export const todosItem: NavItem = { id: "todos", label: "To-Dos", path: "/todos"
 export const eventsItem: NavItem = { id: "events", label: "Events", path: "/events", icon: PartyPopper };
 export const focusItem: NavItem = { id: "focus", label: "Focus", path: "/focus", icon: Timer };
 export const rewardsItem: NavItem = { id: "rewards", label: "Rewards", path: "/rewards", icon: Gift };
-export const topItems = [homeItem, routineItem, focusItem, calendarItem, todosItem, eventsItem];
+export const gardenItem: NavItem = { id: "garden", label: "Garden", path: "/garden", icon: Sprout };
+export const topItems = [homeItem, routineItem, focusItem, gardenItem, calendarItem, todosItem, eventsItem];
 export const settingsItem: NavItem = { id: "settings", label: "Settings", path: "/settings", icon: Settings };
 
 export const groups: NavGroup[] = [

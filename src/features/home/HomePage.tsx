@@ -13,6 +13,7 @@ import { periodOf, progress, stepIds } from "../../lib/goals";
 import { useSetting } from "../../stores/ui";
 import { Card, Page, Progress } from "../../components/ui";
 import { TickBox, useTick, useTickGoals } from "../life/GoalsPage";
+import { StudyMini, TodosToday } from "../../components/study-stats";
 
 const ICON: Record<string, LucideIcon> = { event: PartyPopper, todo: ListTodo, homework: ClipboardList, exam: GraduationCap, birthday: Cake, bill: Receipt, class: School, review: Repeat2 };
 const TINT: Record<string, string> = { event: "#c3a6f4", todo: "#a6e3d0", homework: "#f4d8a6", exam: "#f4b8a6", birthday: "#f4a6c0", bill: "#a6c8f4", class: "#a6c8f4", review: "#c3a6f4" };
@@ -121,6 +122,7 @@ function TodayPanel({ items, now }: { items: Row[]; now: Date }) {
           ) : null}
         </p>
       </div>
+      <TodosToday className="px-6 pb-3" done={items.filter((i) => i.layer === "todo" && i.done).length} total={items.filter((i) => i.layer === "todo").length} />
       <div className="px-4 pb-5">
         {!items.length && <p className="px-2 py-10 text-center text-sm text-muted">Nothing on today. Enjoy it.</p>}
         {allDay.map(row)}
@@ -153,9 +155,6 @@ export default function HomePage() {
 
   const agenda = (useQuery({ queryKey: ["home", "agenda", t], queryFn: () => api.calendarRange(t, horizon) }).data ?? []) as Row[];
   const recalls = useRows("review_schedule", { done_date: { null: true }, due_date: { lte: t } }, "due_date").rows;
-  const modules = useRows("modules", undefined, "code").rows;
-  const targets = useRows("study_targets").rows;
-  const weekLogs = useRows("study_logs", { date: { gte: weekStart } }).rows;
   const habits = useRows("habits", { archived: 0 }, "position, id").rows;
   const habitChecks = useRows("habit_checks", { date: t }).rows;
   const spending = useRows("transactions", { date: { gte: weekStart }, kind: "expense" }).rows;
@@ -164,10 +163,6 @@ export default function HomePage() {
   const [why, setWhy] = useSetting<string>("home.why", "");
   const [draft, setDraft] = useState<string | null>(null);
 
-  const byId = new Map(modules.map((m) => [m.id, m]));
-  const studyRows = targets
-    .filter((x) => x.minutes_per_week > 0 && byId.get(x.module_id) && !byId.get(x.module_id)!.archived)
-    .map((x) => ({ m: byId.get(x.module_id)!, goal: x.minutes_per_week as number, done: weekLogs.filter((l) => l.module_id === x.module_id).reduce((n, l) => n + l.minutes, 0) }));
   const sorted = agenda.filter((i) => i.layer !== "review").sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)));
   const todayItems = sorted.filter((i) => String(i.start_at).slice(0, 10) <= t && String(i.end_at ?? i.start_at).slice(0, 10) >= t);
   const soon = sorted.filter((i) => String(i.start_at).slice(0, 10) > t && i.layer !== "class").slice(0, 6);
@@ -300,21 +295,8 @@ export default function HomePage() {
             })}
           </Tile>
 
-          <Tile title="Study this week" icon={Clock} to="/routine?tab=study">
-            {!studyRows.length && <Quiet>No weekly study targets yet.</Quiet>}
-            {studyRows.map(({ m, goal, done }) => (
-              <div key={m.id} className="py-1 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{m.code}</span> <span className="text-muted">{m.name}</span>
-                  </span>
-                  <span className="tabular shrink-0 text-xs text-muted">
-                    {fmtMinutes(done) || "0m"} / {fmtMinutes(goal)}
-                  </span>
-                </div>
-                <Progress className="mt-1" value={done} max={goal} color={m.color} />
-              </div>
-            ))}
+          <Tile title="Study" icon={Clock} to="/routine?tab=study">
+            <StudyMini />
           </Tile>
 
           <Tile title="Habits" icon={Flame} to="/life/habits">

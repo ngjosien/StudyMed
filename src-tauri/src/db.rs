@@ -16,6 +16,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0006_routine_links.sql"),
     include_str!("../migrations/0007_focus_beats.sql"),
     include_str!("../migrations/0008_plans_hours_gibbs.sql"),
+    include_str!("../migrations/0009_topics_garden.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -147,6 +148,42 @@ mod tests {
         conn.execute("DELETE FROM modules WHERE id = 1", []).unwrap();
         let classes: i64 = conn.query_row("SELECT count(*) FROM class_slots", [], |r| r.get(0)).unwrap();
         assert_eq!(classes, 0);
+    }
+
+    #[test]
+    fn study_time_grows_the_garden() {
+        let conn = test_conn();
+        let mins = |c: &Connection, id: i64| -> (i64, bool) {
+            c.query_row("SELECT minutes, grown_at IS NOT NULL FROM garden_plants WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+        };
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO module_topics(module_id, week, title) VALUES (1, 3, 'Cardiac cycle');
+             INSERT INTO garden_plants(id, species, plot, need_minutes, queue) VALUES (1, 'tulip', 0, 60, 0), (2, 'sunflower', 1, 180, 1);
+             INSERT INTO study_logs(id, module_id, date, minutes) VALUES (1, 1, '2026-11-26', 45);",
+        )
+        .unwrap();
+        assert_eq!(mins(&conn, 1), (45, false));
+        // 45 + 30 = 75: the tulip blooms at 60 and the extra 15 go to the sunflower.
+        conn.execute_batch("INSERT INTO study_logs(id, module_id, date, minutes) VALUES (2, 1, '2026-11-26', 30);").unwrap();
+        assert_eq!(mins(&conn, 1), (60, true));
+        assert_eq!(mins(&conn, 2), (15, false));
+        // The next log goes straight to the sunflower.
+        conn.execute_batch("INSERT INTO study_logs(id, module_id, date, minutes) VALUES (3, 1, '2026-11-27', 20);").unwrap();
+        assert_eq!(mins(&conn, 2), (35, false));
+        // Deleting a log takes its minutes back, and a plant can un-bloom.
+        conn.execute_batch("DELETE FROM study_logs WHERE id = 3; DELETE FROM study_logs WHERE id = 1;").unwrap();
+        assert_eq!(mins(&conn, 2), (15, false));
+        assert_eq!(mins(&conn, 1), (15, false));
+        // With nothing else in line, extra minutes stay on the last plant.
+        conn.execute_batch("DELETE FROM garden_plants WHERE id = 2; INSERT INTO study_logs(id, module_id, date, minutes) VALUES (4, 1, '2026-11-28', 90);").unwrap();
+        assert_eq!(mins(&conn, 1), (105, true));
+        // Focus sessions grow it too (through their study log).
+        conn.execute_batch("INSERT INTO garden_plants(id, species, plot, need_minutes) VALUES (3, 'clover', 2, 30); INSERT INTO focus_sessions(kind, module_id, planned_minutes, started_at, focus_minutes) VALUES ('academic', 1, 25, '2026-11-28T10:00', 25);").unwrap();
+        assert_eq!(mins(&conn, 3), (25, false));
+        conn.execute_batch("DELETE FROM modules WHERE id = 1;").unwrap();
+        let left: i64 = conn.query_row("SELECT count(*) FROM module_topics", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]

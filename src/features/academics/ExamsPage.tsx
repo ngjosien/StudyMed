@@ -17,9 +17,11 @@ import { CountdownStrip, ExamPlan, PlanModal } from "./RevisionPlan";
 
 const KINDS = ["modules", "school_notes", "homework", "events", "people", "todos", "review_topics"];
 
-function TopicChecklist({ examId }: { examId: number }) {
+function TopicChecklist({ examId, moduleId }: { examId: number; moduleId: number }) {
   const mutate = useMutate();
   const { rows } = useRows("exam_topics", { exam_id: examId }, "position, id");
+  const weekly = useRows("module_topics", { module_id: moduleId }, "week, position, id").rows;
+  const fresh = weekly.filter((w) => !rows.some((r) => r.title.trim().toLowerCase() === String(w.title).trim().toLowerCase()));
   const [text, setText] = useState("");
   const green = rows.filter((t) => t.confidence === "green").length;
   return (
@@ -76,6 +78,15 @@ function TopicChecklist({ examId }: { examId: number }) {
           Add
         </Button>
       </form>
+      {fresh.length > 0 && (
+        <button
+          type="button"
+          className="mt-2 text-xs text-accent hover:underline"
+          onClick={() => mutate(db.insertMany("exam_topics", fresh.map((w, i) => ({ exam_id: examId, title: w.title, position: rows.length + i }))))}
+        >
+          Add {fresh.length} topic{fresh.length > 1 ? "s" : ""} from the module's weekly content
+        </button>
+      )}
     </div>
   );
 }
@@ -109,7 +120,7 @@ function ExamDetail({ examId, onEdit, onPlan }: { examId: number; onEdit: (r: Ro
         </div>
       </div>
 
-      <TopicChecklist examId={examId} />
+      <TopicChecklist examId={examId} moduleId={e.module_id} />
 
       <ExamPlan exam={e} onPlan={() => onPlan(e)} />
 

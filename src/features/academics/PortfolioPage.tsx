@@ -111,13 +111,16 @@ function Hero({ rows, totals }: { rows: Row[]; totals: Map<number, Hours> }) {
     [String(hours()), "hours in all"],
   ];
   return (
-    <div className="hero-sheen anim-item relative overflow-hidden rounded-[22px] p-8" style={{ background: "linear-gradient(120deg, #f7c6d8, #e4d3f7 55%, #f8e6c8)", backgroundSize: "200% 200%", color: "#3a2330" }}>
-      <Stethoscope size={210} strokeWidth={1.1} className="pointer-events-none absolute -top-6 -right-6 rotate-12 opacity-15" />
-      <p className="text-[11px] tracking-[0.3em] uppercase opacity-70">Portfolio</p>
+    <div
+      className="glass anim-item relative overflow-hidden rounded-[22px] p-8"
+      style={{ backgroundImage: "linear-gradient(125deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 6%, transparent) 55%, color-mix(in srgb, var(--accent) 14%, transparent))" }}
+    >
+      <Stethoscope size={210} strokeWidth={1.1} className="pointer-events-none absolute -top-6 -right-6 rotate-12 text-accent opacity-15" />
+      <p className="eyebrow !text-accent">Portfolio</p>
       <h1 className="font-display mt-1 text-4xl leading-tight">My road to medicine</h1>
       <div className="relative mt-7 grid grid-cols-2 gap-2.5 md:grid-cols-4">
         {stats.map(([n, label]) => (
-          <div key={label} className="rounded-[16px] bg-white/45 px-4 py-3 backdrop-blur">
+          <div key={label} className="rounded-[16px] border border-line bg-surface-solid/40 px-4 py-3">
             <div className="font-display text-2xl">{n}</div>
             <div className="text-xs opacity-75">{label}</div>
           </div>

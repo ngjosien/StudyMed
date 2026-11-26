@@ -2,15 +2,17 @@
 // unfinished to-dos), and weekly study targets with no fixed time.
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { CalendarClock, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
+import { BookOpen, CalendarClock, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useNow, useRows } from "../../lib/hooks";
 import { addDays, daysUntil, fmtDateShort, fmtDateTime, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
 import { cx, fmtMinutes } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
 import { DEFAULT_CUTOFFS, standing, studyNeed } from "../../lib/grades";
-import { Button, Card, Field, IconButton, Input, Modal, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { Button, Card, Field, IconButton, Input, MilestoneBar, Modal, Page, PageHeader, Segmented } from "../../components/ui";
 import { TickBox } from "../life/GoalsPage";
+import { StudyStats } from "../../components/study-stats";
+import { useThisWeeksTopics } from "../academics/WeeklyContent";
 import { ChoiceField, DateField, TimeField } from "../../components/pickers";
 import { toast } from "../../stores/toast";
 
@@ -204,7 +206,7 @@ function StudyRow({ m, target, done, compact }: { m: Row; target?: Row; done: nu
           +1h
         </Button>
       </div>
-      {goal > 0 && <Progress className="mt-1.5" value={done} max={goal} color={done >= goal ? "var(--accent)" : m.color} />}
+      {goal > 0 && <MilestoneBar className="mt-2" value={done} max={goal} color={m.color} label={`${m.code} this week`} />}
     </div>
   );
 }
@@ -226,6 +228,7 @@ function Today() {
   const leftover = useRows("todos", { parent_id: null, done: 0, date: { gte: weekAgo, lte: yesterday } }, "date").rows;
   const modules = useRows("modules").rows;
   const byId = new Map(modules.map((m) => [m.id, m]));
+  const weekTopics = useThisWeeksTopics();
 
   const items = useRows("routine_items", undefined, "start_time").rows;
   const ticks = useRows("routine_ticks", { date: t }).rows;
@@ -359,6 +362,20 @@ function Today() {
           })}
         </Tile>
 
+        {weekTopics.week && (
+          <Tile title={`Week ${weekTopics.week} content`} icon={BookOpen} count={weekTopics.rows.filter((x) => !x.done).length}>
+            {!weekTopics.rows.length && <Quiet>Nothing listed for this week. Add topics on each module's page.</Quiet>}
+            {weekTopics.rows.map((x) => (
+              <div key={x.id} className="flex items-center gap-3 py-1 text-sm">
+                <TickBox on={!!x.done} size={22} label={`Covered: ${x.title}`} onClick={() => mutate(db.update("module_topics", x.id, { done: x.done ? 0 : 1 }))} />
+                <Link to={`/academics/modules/${x.module_id}`} className={cx("min-w-0 flex-1 truncate hover:underline", x.done && "text-muted line-through")}>
+                  <span className="font-medium">{byId.get(x.module_id)?.code}</span> {x.title}
+                </Link>
+              </div>
+            ))}
+          </Tile>
+        )}
+
         <Tile title="Unfinished from the past week" icon={ListTodo} to="/todos" count={leftover.length}>
           {!leftover.length && <Quiet>You finished everything.</Quiet>}
           {leftover.map((x) => (
@@ -480,6 +497,8 @@ function Study() {
   const todays = study.logs.filter((l) => l.date === t);
   const byId = new Map(study.rows.map((r) => [r.m.id, r.m]));
   return (
+    <div className="space-y-4">
+    <StudyStats />
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <Card className="p-5">
         <h2 className="font-semibold">Weekly study targets</h2>
@@ -505,8 +524,8 @@ function Study() {
                   <IconButton icon={Plus} label="30 minutes more" onClick={() => setTarget(m, target, goal + 30)} />
                 </div>
                 {goal > 0 && (
-                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted">
-                    <Progress value={done} max={goal} color={m.color} />
+                  <div className="mt-2 flex items-center gap-3 text-[11px] text-muted">
+                    <MilestoneBar className="flex-1" value={done} max={goal} color={m.color} label={`${m.code} this week`} />
                     <span className="shrink-0">
                       {fmtMinutes(done) || "0m"} done{done >= goal ? " ✓" : `, ${fmtMinutes(goal - done)} to go`}
                     </span>
@@ -545,6 +564,7 @@ function Study() {
         )}
       </Card>
     </div>
+    </div>
   );
 }
 
@@ -566,7 +586,7 @@ export default function RoutinePage() {
             options={[
               { value: "today", label: "Today", icon: Sunrise },
               { value: "week", label: "Week plan", icon: Pencil },
-              { value: "study", label: "Study targets", icon: ClipboardList },
+              { value: "study", label: "Study", icon: ClipboardList },
             ]}
           />
         }

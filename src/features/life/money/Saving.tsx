@@ -4,7 +4,7 @@ import { db, type Row } from "../../../lib/api";
 import { useMutate, useRows } from "../../../lib/hooks";
 import { addDays, daysUntil, fmtDate, parse, toDateStr, today } from "../../../lib/dates";
 import { cx, fmtMoney, pct, toCents } from "../../../lib/format";
-import { Button, Card, Empty, IconButton, Input } from "../../../components/ui";
+import { Button, Card, Empty, IconButton, Input, MilestoneBar } from "../../../components/ui";
 import { FormModal, useFormState } from "../../../components/form";
 import { LinkChips } from "../../../components/linked";
 
@@ -16,7 +16,6 @@ const BUCKETS: Record<string, string> = {
   "Rainy day": "#a6e3d0",
 };
 const OWN = "__own";
-const MILESTONES = [25, 50, 75, 100];
 
 /** Where the user is against the plan they set. */
 function pace(g: Row): { text: string; behind?: boolean } {
@@ -94,19 +93,7 @@ function GoalCard({ goal: g, color, onEdit }: { goal: Row; color: string; onEdit
           <span className="ml-auto text-lg font-semibold">{done}%</span>
         </div>
 
-        <div className="relative mt-3 h-4 rounded-full bg-surface-solid/70" role="progressbar" aria-valuenow={Math.min(100, done)} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${Math.min(100, done)}%`, background: `color-mix(in srgb, ${color} 75%, var(--fg))` }} />
-          {MILESTONES.map((m) => (
-            <span
-              key={m}
-              title={`${m}%`}
-              className={cx("absolute top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-surface-solid", done < m && "bg-surface-2")}
-              style={{ left: `${m === 100 ? 98 : m}%`, background: done >= m ? color : undefined, color: "#3a2330" }}
-            >
-              {done >= m && <Check size={10} strokeWidth={4} />}
-            </span>
-          ))}
-        </div>
+        <MilestoneBar className="mt-3" value={g.saved_cents} max={g.target_cents} color={color} label={`${g.name}: ${done}% saved`} />
         <p className={cx("mt-3 text-xs", status.behind ? "text-danger" : "text-muted")}>{status.text}</p>
         <LinkChips type="savings_goals" id={g.id} />
       </div>

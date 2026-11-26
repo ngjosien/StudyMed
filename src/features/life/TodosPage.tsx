@@ -6,6 +6,7 @@ import { useMutate, useRows, useTagsBy } from "../../lib/hooks";
 import { cx, fmtMinutes } from "../../lib/format";
 import { fmtDateShort, fmtTime, today } from "../../lib/dates";
 import { Button, Card, Checkbox, ConfirmDelete, Drawer, Empty, Field, IconButton, Input, Page, PageHeader, Segmented } from "../../components/ui";
+import { TodosToday } from "../../components/study-stats";
 import { FormModal, useFormState, type FormState } from "../../components/form";
 import { Countdown, WeekBoard } from "../../components/weekboard";
 import { useSetting } from "../../stores/ui";
@@ -253,6 +254,7 @@ export default function TodosPage() {
         }
       />
       <Page className="space-y-5">
+        <TodosToday className="glass rounded-[18px] px-5 py-4" done={rows.filter((x) => x.date === today() && x.done).length} total={rows.filter((x) => x.date === today()).length} />
         <form
           className="glass space-y-2.5 rounded-[18px] p-4"
           onSubmit={(e) => {

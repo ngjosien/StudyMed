@@ -5,7 +5,8 @@ import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { addMinutes, fmtDateShort, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
-import { Button, Card, ConfirmDelete, Input, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { Button, Card, ConfirmDelete, Input, MilestoneBar, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { speciesById } from "../garden/catalog";
 import { Beats, Laurel, useBeats } from "../../components/beats";
 import { useSetting } from "../../stores/ui";
 import {
@@ -51,6 +52,7 @@ export default function FocusPage() {
           <History />
         </div>
         <aside className="space-y-4">
+          <GardenPanel />
           <TodayPanel />
           <WeekPanel />
         </aside>
@@ -487,6 +489,41 @@ function History() {
           );
         })}
       </div>
+    </Card>
+  );
+}
+
+/** The plant your study time is growing, from the Garden. */
+function GardenPanel() {
+  const run = useFocusRun();
+  const now = useTick(!!run && run.endedAt == null && run.kind === "academic");
+  const growing = useRows("garden_plants", { grown_at: { null: true } }, "queue, id").rows[0];
+  const live = run && run.kind === "academic" && run.moduleId ? Math.floor(focusMs(run, now) / 60_000) : 0;
+  const s = growing ? speciesById.get(growing.species) : undefined;
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between">
+        <p className="eyebrow">Garden</p>
+        <Link to="/garden" className="text-xs text-accent hover:underline">
+          Open
+        </Link>
+      </div>
+      {growing && s ? (
+        <>
+          <p className="mt-2 text-sm font-semibold">
+            {s.emoji} {s.name}
+          </p>
+          <MilestoneBar className="mt-2" value={Number(growing.minutes) + live} max={Number(growing.need_minutes)} color="#7cc152" label="Plant growth" />
+          <p className="mt-2 text-xs text-muted">
+            {hm(Math.max(0, Number(growing.need_minutes) - Number(growing.minutes) - live))} more study to bloom
+            {run?.kind === "other" ? " · non-academic time doesn't grow it" : ""}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-sm text-muted">
+          Plant a seed in the <Link to="/garden" className="text-accent underline">Garden</Link> and your study time will grow it.
+        </p>
+      )}
     </Card>
   );
 }
