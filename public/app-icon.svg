@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7d2136"/>
+      <stop offset="1" stop-color="#4b0f1f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <!-- Rod of Asclepius: one staff, one serpent -->
+  <line x1="512" y1="214" x2="512" y2="822" stroke="#f3e3c3" stroke-width="58" stroke-linecap="round"/>
+  <path d="M 612 300 C 380 318 380 420 512 452 C 652 486 652 572 512 604 C 384 634 396 726 520 754"
+        fill="none" stroke="#5f1528" stroke-width="96" stroke-linecap="round"/>
+  <path d="M 612 300 C 380 318 380 420 512 452 C 652 486 652 572 512 604 C 384 634 396 726 520 754"
+        fill="none" stroke="#f3e3c3" stroke-width="50" stroke-linecap="round"/>
+  <ellipse cx="628" cy="296" rx="50" ry="36" fill="#f3e3c3" transform="rotate(-12 628 296)"/>
+</svg>
