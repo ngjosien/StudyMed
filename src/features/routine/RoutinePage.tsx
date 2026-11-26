@@ -1,15 +1,16 @@
-// Routine: a set plan for each day of the week, a morning check-in that walks through
-// what's due, today's to-dos and study, and weekly study targets with no fixed time.
+// Routine: a set plan for each day of the week, what is coming up (homework, exams,
+// unfinished to-dos), and weekly study targets with no fixed time.
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, BookOpen, CalendarClock, Check, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
+import { CalendarClock, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useNow, useRows } from "../../lib/hooks";
 import { addDays, daysUntil, fmtDateShort, fmtDateTime, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
 import { cx, fmtMinutes } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
 import { DEFAULT_CUTOFFS, standing, studyNeed } from "../../lib/grades";
-import { Button, Card, Checkbox, Field, IconButton, Input, Modal, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { Button, Card, Field, IconButton, Input, Modal, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { TickBox } from "../life/GoalsPage";
 import { ChoiceField, DateField, TimeField } from "../../components/pickers";
 import { toast } from "../../stores/toast";
 
@@ -128,33 +129,42 @@ function ItemModal({ item, onClose }: { item: Row | null; onClose: () => void })
 }
 
 /* ------------------------------------------------------------ Shared bits */
-function Step({ n, title, icon: Icon, done, onDone, children }: { n: number; title: string; icon: typeof Sunrise; done: boolean; onDone: () => void; children: ReactNode }) {
+/** Colour per kind of activity, used on the timeline and the week plan. */
+const KIND_TINT: Record<string, string> = {
+  "Morning check": "#f4d8a6",
+  Study: "#c3a6f4",
+  Class: "#a6c8f4",
+  Exercise: "#a6e3d0",
+  Meal: "#f4b8a6",
+  Rest: "#b8c0cc",
+  Chores: "#e6d2a0",
+  Social: "#f4a6c0",
+  Other: "#cfc6e0",
+};
+const tintOf = (kind: string) => KIND_TINT[kind] ?? KIND_TINT.Other;
+const wash = (tint: string) => ({ background: `linear-gradient(100deg, color-mix(in srgb, ${tint} 40%, transparent), color-mix(in srgb, ${tint} 8%, transparent))` });
+
+function Tile({ title, icon: Icon, to, count, children }: { title: string; icon: typeof Sunrise; to?: string; count?: number; children: ReactNode }) {
   return (
-    <Card className={cx("overflow-hidden transition-opacity", done && "opacity-80")}>
-      <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
-        <span className={cx("font-display flex h-8 w-8 items-center justify-center rounded-full text-sm", done ? "bg-accent text-accent-fg" : "border border-accent/40 text-accent")}>
-          {done ? <Check size={15} /> : n}
+    <Card className="p-4">
+      <div className="mb-2 flex items-center gap-2.5">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <Icon size={14} />
         </span>
-        <Icon size={15} className="text-accent" />
-        <h2 className="flex-1 font-semibold">{title}</h2>
-        <Button size="sm" variant={done ? "ghost" : "primary"} className="!rounded-full" icon={done ? Undo2 : Check} onClick={onDone}>
-          {done ? "Undo" : "Done"}
-        </Button>
+        <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
+        {!!count && <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-fg">{count}</span>}
+        {to && (
+          <Link to={to} className="text-xs text-accent hover:underline">
+            Open
+          </Link>
+        )}
       </div>
-      {!done && <div className="p-4">{children}</div>}
+      {children}
     </Card>
   );
 }
-const Sub = ({ title, count, children }: { title: string; count?: number; children: ReactNode }) => (
-  <div className="rounded-[14px] bg-surface-2/60 p-3">
-    <div className="mb-1.5 flex items-center gap-2">
-      <span className="eyebrow !text-[9.5px]">{title}</span>
-      {count !== undefined && <span className="text-[11px] text-muted">{count}</span>}
-    </div>
-    {children}
-  </div>
-);
-const Quiet = ({ children }: { children: ReactNode }) => <p className="py-1 text-sm text-muted">{children}</p>;
+const Quiet = ({ children }: { children: ReactNode }) => <p className="py-1.5 text-sm text-muted">{children}</p>;
+const inDays = (n: number) => (n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`);
 
 function useStudy() {
   const weekStart = toDateStr(startOfWeek(new Date()));
@@ -205,179 +215,166 @@ function Today() {
   const now = useNow();
   const t = today();
   const yesterday = toDateStr(addDays(now, -1));
+  const weekAgo = toDateStr(addDays(now, -7));
   const in3 = toDateStr(addDays(now, 3));
+  const in30 = toDateStr(addDays(now, 30));
   const homework = useRows("homework", { due_at: { lte: `${in3}T23:59` } }, "due_at").rows.filter((h) => h.status !== "Submitted" && String(h.due_at).slice(0, 10) >= t);
   const exams = useRows("exams", { start_at: { gte: t } }, "start_at").rows;
-  const soonExams = exams.filter((e) => (daysUntil(e.start_at) ?? 99) <= 30);
+  const soonExams = exams.filter((e) => String(e.start_at).slice(0, 10) <= in30);
   const nextExam = exams[0];
-  const leftover = useRows("todos", { parent_id: null, done: 0, date: { lte: yesterday } }, "date").rows;
-  const todayTodos = useRows("todos", { parent_id: null, date: t }, "done, time, id").rows;
+  const plans = useRows("todos", { plan_exam_id: { null: false } }).rows;
+  const leftover = useRows("todos", { parent_id: null, done: 0, date: { gte: weekAgo, lte: yesterday } }, "date").rows;
   const modules = useRows("modules").rows;
   const byId = new Map(modules.map((m) => [m.id, m]));
-  const study = useStudy();
-  const [state, setState] = useSetting<{ date: string; steps: number[] }>("routine.morning", { date: "", steps: [] });
-  const steps = state.date === t ? state.steps : [];
-  const toggleStep = (n: number) => setState({ date: t, steps: steps.includes(n) ? steps.filter((s) => s !== n) : [...steps, n] });
-  const [quick, setQuick] = useState("");
 
   const items = useRows("routine_items", undefined, "start_time").rows;
   const ticks = useRows("routine_ticks", { date: t }).rows;
   const classes = useRows("class_slots", { weekday: weekdayOf(now) }, "start_time").rows.filter((c) => (!c.starts_on || c.starts_on <= t) && (!c.ends_on || c.ends_on >= t));
   const timeline = [
-    ...itemsOn(items, t).map((i) => ({ key: `r${i.id}`, time: i.start_time as string, end: i.end_time as string | null, title: i.title as string, kind: i.kind as string, item: i })),
-    ...classes.map((c) => ({ key: `c${c.id}`, time: c.start_time as string, end: c.end_time as string, title: `${byId.get(c.module_id)?.code ?? ""} ${c.kind}`, kind: "Class", item: null as Row | null })),
+    ...itemsOn(items, t).map((i) => ({ key: `r${i.id}`, time: i.start_time as string, end: i.end_time as string | null, title: i.title as string, kind: i.kind as string, item: i as Row | null, color: tintOf(i.kind) })),
+    ...classes.map((c) => {
+      const m = byId.get(c.module_id);
+      return { key: `c${c.id}`, time: c.start_time as string, end: c.end_time as string | null, title: `${m?.code ?? ""} ${c.kind}`, kind: "Class", item: null as Row | null, color: (m?.color as string) ?? tintOf("Class") };
+    }),
   ].sort((a, b) => a.time.localeCompare(b.time));
   const nowHM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const weekGoal = study.rows.reduce((s, r) => s + (r.target?.minutes_per_week ?? 0), 0);
-  const weekDone = study.rows.reduce((s, r) => s + (r.target ? Math.min(r.done, r.target.minutes_per_week) : 0), 0);
+  const nowIndex = timeline.findIndex((x) => (x.end ?? x.time) > nowHM);
+  const done = timeline.filter((x) => x.item && ticks.some((k) => k.item_id === x.item!.id)).length;
+  const tickable = timeline.filter((x) => x.item).length;
+
+  const tickItem = (item: Row, on: boolean) =>
+    mutate(async () => {
+      if (on) await db.insert("routine_ticks", { item_id: item.id, date: t });
+      else await db.removeWhere("routine_ticks", { item_id: item.id, date: t });
+    });
 
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="space-y-4">
-        <Step n={1} title="First thing: check what's coming" icon={Sunrise} done={steps.includes(1)} onDone={() => toggleStep(1)}>
-          <div className="grid gap-3 lg:grid-cols-3">
-            <Sub title="Homework due in 3 days" count={homework.length}>
-              {!homework.length && <Quiet>Nothing due. Nice.</Quiet>}
-              {homework.map((h) => (
-                <Link key={h.id} to={`/academics/homework?id=${h.id}`} className="block rounded-lg px-1 py-1 text-sm hover:bg-surface-2">
-                  <span className="font-medium">{byId.get(h.module_id)?.code}</span> {h.title}
-                  <span className="block text-[11px] text-muted">
-                    {fmtDateTime(h.due_at)} · {daysUntil(h.due_at) === 0 ? "today" : `in ${daysUntil(h.due_at)} day${daysUntil(h.due_at) === 1 ? "" : "s"}`}
-                  </span>
-                </Link>
-              ))}
-            </Sub>
-            <Sub title="Exams in the next 30 days" count={soonExams.length}>
-              {!soonExams.length && <Quiet>{nextExam ? `Next: ${nextExam.name} in ${daysUntil(nextExam.start_at)} days.` : "No exams coming up."}</Quiet>}
-              {soonExams.map((e) => {
-                const d = daysUntil(e.start_at)!;
-                return (
-                  <Link key={e.id} to={`/academics/exams?id=${e.id}`} className="flex items-center gap-2 rounded-lg px-1 py-1 text-sm hover:bg-surface-2">
-                    <span className="font-display tabular w-10 shrink-0 text-center text-lg leading-none" style={{ color: d <= 7 ? "var(--danger)" : undefined }}>
-                      {d}
-                      <span className="block text-[9px] text-muted">days</span>
-                    </span>
-                    <span className="min-w-0">
-                      <span className="font-medium">{byId.get(e.module_id)?.code}</span> {e.name}
-                      <span className="block text-[11px] text-muted">{fmtDateShort(String(e.start_at).slice(0, 10))}</span>
-                    </span>
-                  </Link>
-                );
-              })}
-            </Sub>
-            <Sub title="Left over from before" count={leftover.length}>
-              {!leftover.length && <Quiet>You finished everything.</Quiet>}
-              {leftover.map((x) => (
-                <div key={x.id} className="flex items-center gap-2 py-0.5 text-sm">
-                  <Checkbox checked={false} onChange={() => mutate(db.update("todos", x.id, doneChange(true)))} />
-                  <span className="min-w-0 flex-1 truncate">{x.title}</span>
-                  <button type="button" onClick={() => mutate(db.update("todos", x.id, { date: t }))} className="shrink-0 rounded-full bg-surface-solid/70 px-2 py-0.5 text-[11px] hover:text-accent">
-                    Do today
-                  </button>
-                </div>
-              ))}
-            </Sub>
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <Card className="overflow-hidden">
+        <div className="flex items-end justify-between gap-4 px-6 pt-6 pb-3">
+          <div>
+            <p className="eyebrow !text-accent">Today's routine</p>
+            <p className="font-display text-2xl">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
           </div>
-        </Step>
-
-        <Step n={2} title="Write today's to-dos" icon={ListTodo} done={steps.includes(2)} onDone={() => toggleStep(2)}>
-          <form
-            className="mb-2 flex gap-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!quick.trim()) return;
-              await mutate(db.insert("todos", { title: quick.trim(), date: t }));
-              setQuick("");
-            }}
-          >
-            <Input value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="Add a to-do for today…" className="h-10 flex-1" />
-            <Button type="submit" variant="primary" icon={Plus} disabled={!quick.trim()} className="!rounded-full">
-              Add
-            </Button>
-          </form>
-          {!todayTodos.length && <Quiet>Nothing planned for today yet.</Quiet>}
-          {todayTodos.map((x) => (
-            <div key={x.id} className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-sm hover:bg-surface-2">
-              <Checkbox checked={!!x.done} onChange={(c) => mutate(db.update("todos", x.id, doneChange(c)))} />
-              <Link to={`/todos?id=${x.id}`} className={cx("flex-1 truncate", x.done && "text-muted line-through")}>
-                {x.title}
-              </Link>
-              {x.time && <span className="text-xs text-muted">{fmtTime(x.time)}</span>}
-            </div>
-          ))}
-          <Link to="/todos" className="mt-1 inline-flex items-center gap-1 text-xs text-accent hover:underline">
-            All to-dos <ArrowRight size={12} />
-          </Link>
-        </Step>
-
-        <Step n={3} title="Start studying" icon={BookOpen} done={steps.includes(3)} onDone={() => toggleStep(3)}>
-          {weekGoal > 0 && (
-            <div className="mb-2 rounded-[14px] bg-surface-2/60 p-3">
-              <div className="flex items-baseline justify-between text-sm">
-                <span className="eyebrow !text-[9.5px]">This week</span>
-                <span className="tabular text-xs text-muted">
-                  {fmtMinutes(weekDone) || "0m"} of {fmtMinutes(weekGoal)}
-                </span>
-              </div>
-              <Progress className="mt-1.5 !h-2.5" value={weekDone} max={weekGoal} />
-            </div>
-          )}
-          {!study.rows.length && <Quiet>Add your modules first.</Quiet>}
-          {study.rows.filter((r) => r.target?.minutes_per_week).length === 0 && study.rows.length > 0 && (
-            <Quiet>
-              No weekly targets yet. <Link to="/routine?tab=study" className="text-accent hover:underline">Set them</Link>, then study whenever suits you this week.
-            </Quiet>
-          )}
-          <div className="divide-y divide-line">
-            {study.rows
-              .filter((r) => r.target?.minutes_per_week)
-              .map((r) => (
-                <StudyRow key={r.m.id} m={r.m} target={r.target} done={r.done} />
-              ))}
+          <div className="text-right text-sm text-muted">
+            {tickable > 0 && (
+              <p>
+                <span className="font-semibold text-fg">{done}</span> of {tickable} done
+              </p>
+            )}
+            <Link to="/routine?tab=week" className="text-xs text-accent hover:underline">
+              Edit week plan
+            </Link>
           </div>
-        </Step>
-      </div>
-
-      <Card className="p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <CalendarClock size={15} className="text-accent" />
-          <h2 className="flex-1 font-semibold">Today's routine</h2>
-          <Link to="/routine?tab=week" className="text-xs text-accent hover:underline">
-            Edit week
-          </Link>
         </div>
-        {!timeline.length && <Quiet>No routine for today. Add activities under Week plan.</Quiet>}
-        <ol className="relative space-y-1 border-l border-line pl-4">
-          {timeline.map((x, i) => {
-            const ticked = x.item && ticks.some((k) => k.item_id === x.item!.id);
-            const past = (x.end ?? x.time) < nowHM;
-            const current = x.time <= nowHM && (x.end ? nowHM < x.end : (timeline[i + 1]?.time ?? "24:00") > nowHM);
+        <div className="px-4 pb-5">
+          {!timeline.length && (
+            <p className="px-2 py-10 text-center text-sm text-muted">
+              Nothing planned for today. <Link to="/routine?tab=week" className="text-accent hover:underline">Add activities to your week plan</Link>.
+            </p>
+          )}
+          {timeline.map((x, n) => {
+            const ticked = !!x.item && ticks.some((k) => k.item_id === x.item!.id);
+            const past = (x.end ?? x.time) <= nowHM;
             return (
-              <li key={x.key} className={cx("relative rounded-lg py-1.5 pr-1 pl-1 text-sm", current && "bg-accent-soft")}>
-                <span className={cx("absolute top-3 -left-[21px] h-2.5 w-2.5 rounded-full border-2 border-[var(--bg)]", current ? "bg-accent" : "bg-line")} />
-                <div className="flex items-center gap-2">
-                  <span className="tabular w-16 shrink-0 text-xs text-muted">{fmtTime(x.time)}</span>
-                  <span className={cx("min-w-0 flex-1 truncate", ticked && "text-muted line-through", past && !ticked && x.item && "opacity-70")}>{x.title}</span>
-                  {x.item ? (
-                    <Checkbox
-                      checked={!!ticked}
-                      onChange={(c) =>
-                        mutate(async () => {
-                          if (c) await db.insert("routine_ticks", { item_id: x.item!.id, date: t });
-                          else await db.removeWhere("routine_ticks", { item_id: x.item!.id, date: t });
-                        })
-                      }
-                    />
-                  ) : (
-                    <GraduationCap size={13} className="text-muted" />
-                  )}
+              <div key={x.key}>
+                {n === nowIndex && (
+                  <div className="flex items-center gap-4 py-1">
+                    <span className="w-16 text-right text-[11px] font-semibold text-danger">{fmtTime(nowHM)}</span>
+                    <span className="flex w-4 justify-center">
+                      <span className="h-2.5 w-2.5 rounded-full bg-danger shadow-[0_0_0_4px_color-mix(in_srgb,var(--danger)_25%,transparent)]" />
+                    </span>
+                    <span className="h-0.5 flex-1 rounded-full bg-danger/60" />
+                  </div>
+                )}
+                <div className={cx("relative flex items-stretch gap-4", past && !ticked && "opacity-80", ticked && "opacity-60")}>
+                  <div className="w-16 shrink-0 pt-3 text-right text-xs text-muted tabular-nums">
+                    <div className="font-semibold text-fg">{fmtTime(x.time)}</div>
+                    {x.end && <div>{fmtTime(x.end)}</div>}
+                  </div>
+                  <div className="relative flex w-4 shrink-0 justify-center">
+                    <span className="absolute inset-y-0 w-0.5 bg-line" />
+                    <span className="relative mt-4 h-3 w-3 rounded-full ring-4 ring-surface-solid" style={{ background: x.color }} />
+                  </div>
+                  <div className="my-1 flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-3.5 py-2.5" style={wash(x.color)}>
+                    {x.item ? <CalendarClock size={16} className="shrink-0 opacity-70" /> : <GraduationCap size={16} className="shrink-0 opacity-70" />}
+                    <span className="min-w-0 flex-1">
+                      <span className={cx("block truncate font-medium", ticked && "line-through")}>{x.title}</span>
+                      <span className="block text-xs text-muted">{x.kind}</span>
+                    </span>
+                    {x.item && <TickBox on={ticked} size={24} label={`Done: ${x.title}`} onClick={() => tickItem(x.item!, !ticked)} />}
+                  </div>
                 </div>
-                <span className="block pl-[72px] text-[10px] text-muted">{x.kind}</span>
-              </li>
+              </div>
             );
           })}
-        </ol>
+        </div>
       </Card>
+
+      <div className="space-y-4">
+        <Tile title="Homework due in 3 days" icon={ClipboardList} to="/academics/homework" count={homework.length}>
+          {!homework.length && <Quiet>Nothing due. Nice.</Quiet>}
+          {homework.map((h) => {
+            const d = daysUntil(h.due_at) ?? 0;
+            return (
+              <Link key={h.id} to={`/academics/homework?id=${h.id}`} className="flex items-center gap-3 rounded-2xl px-2 py-1.5 text-sm hover:bg-surface-2">
+                <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: byId.get(h.module_id)?.color ?? "var(--accent)" }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    <span className="font-medium">{byId.get(h.module_id)?.code}</span> {h.title}
+                  </span>
+                  <span className="block text-[11px] text-muted">{fmtDateTime(h.due_at)}</span>
+                </span>
+                <span className={cx("shrink-0 text-xs font-medium", d <= 1 ? "text-danger" : "text-muted")}>{inDays(d)}</span>
+              </Link>
+            );
+          })}
+        </Tile>
+
+        <Tile title="Exams in the next 30 days" icon={GraduationCap} to="/academics/exams" count={soonExams.length}>
+          {!soonExams.length && <Quiet>{nextExam ? `Next: ${nextExam.name}, ${inDays(daysUntil(nextExam.start_at) ?? 0)}.` : "No exams coming up."}</Quiet>}
+          {soonExams.map((e) => {
+            const d = daysUntil(e.start_at) ?? 0;
+            const plan = plans.filter((p) => p.plan_exam_id === e.id);
+            const planDone = plan.filter((p) => p.done).length;
+            return (
+              <Link key={e.id} to={`/academics/exams?id=${e.id}`} className="flex items-center gap-3 rounded-2xl px-2 py-1.5 text-sm hover:bg-surface-2">
+                <span className="w-11 shrink-0 rounded-xl bg-surface-2 py-1 text-center leading-tight">
+                  <span className="font-display tabular block text-lg" style={{ color: d <= 7 ? "var(--danger)" : undefined }}>
+                    {d}
+                  </span>
+                  <span className="block text-[9px] text-muted uppercase">{d === 1 ? "day" : "days"}</span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    <span className="font-medium">{byId.get(e.module_id)?.code}</span> {e.name}
+                  </span>
+                  <span className="block text-[11px] text-muted">
+                    {fmtDateShort(String(e.start_at).slice(0, 10))}
+                    {plan.length > 0 && ` · revision ${planDone}/${plan.length}`}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </Tile>
+
+        <Tile title="Unfinished from the past week" icon={ListTodo} to="/todos" count={leftover.length}>
+          {!leftover.length && <Quiet>You finished everything.</Quiet>}
+          {leftover.map((x) => (
+            <div key={x.id} className="flex items-center gap-3 py-1 text-sm">
+              <TickBox on={false} size={22} label={`Done: ${x.title}`} onClick={() => mutate(db.update("todos", x.id, doneChange(true)))} />
+              <Link to={`/todos?id=${x.id}`} className="min-w-0 flex-1 truncate hover:underline">
+                {x.title}
+                <span className="block text-[11px] text-muted">{fmtDateShort(x.date)}</span>
+              </Link>
+              <button type="button" onClick={() => mutate(db.update("todos", x.id, { date: t }))} className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium hover:text-accent">
+                Do today
+              </button>
+            </div>
+          ))}
+        </Tile>
+      </div>
     </div>
   );
 }
@@ -393,49 +390,78 @@ function Week() {
   const t = today();
   return (
     <>
-      <div className="mb-3 flex items-center gap-3">
-        <p className="flex-1 text-sm text-muted">Your plan for each day of the week. Classes from your timetable show in grey.</p>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <p className="flex-1 text-sm text-muted">Your plan for each day. Click an activity to change it; classes come from your timetable.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {KINDS.filter((k) => k !== "Class").map((k) => (
+            <span key={k} className="inline-flex items-center gap-1 text-[11px] text-muted">
+              <span className="h-2 w-2 rounded-full" style={{ background: tintOf(k) }} />
+              {k}
+            </span>
+          ))}
+        </div>
         <Button variant="primary" icon={Plus} className="!rounded-full" onClick={() => setEditing(null)}>
           Add activity
         </Button>
       </div>
-      <Card className="overflow-x-auto p-3">
-        <div className="grid min-w-[900px] grid-cols-7 gap-1.5">
+      <div className="overflow-x-auto pb-2">
+        <div className="grid min-w-[820px] grid-cols-7 gap-2">
           {DAYS.map((d, i) => {
             const date = toDateStr(addDays(monday, i));
             const list = [
-              ...itemsOn(items, date).map((x) => ({ k: `r${x.id}`, time: x.start_time as string, title: x.title as string, sub: x.kind as string, row: x as Row | null, once: !!x.once_on })),
+              ...itemsOn(items, date).map((x) => ({ k: `r${x.id}`, time: x.start_time as string, end: x.end_time as string | null, title: x.title as string, sub: x.kind as string, row: x as Row | null, once: !!x.once_on, color: tintOf(x.kind) })),
               ...classes
                 .filter((c) => c.weekday === i && (!c.starts_on || c.starts_on <= date) && (!c.ends_on || c.ends_on >= date))
-                .map((c) => ({ k: `c${c.id}`, time: c.start_time as string, title: `${byId.get(c.module_id)?.code ?? ""} ${c.kind}`, sub: "Class", row: null, once: false })),
+                .map((c) => {
+                  const m = byId.get(c.module_id);
+                  return { k: `c${c.id}`, time: c.start_time as string, end: c.end_time as string | null, title: `${m?.code ?? ""} ${c.kind}`, sub: "Class", row: null, once: false, color: (m?.color as string) ?? tintOf("Class") };
+                }),
             ].sort((a, b) => a.time.localeCompare(b.time));
+            const isToday = date === t;
             return (
-              <div key={d} className={cx("min-h-40 rounded-[14px] p-1.5", date === t ? "bg-accent-soft" : "bg-surface-2/50")}>
-                <div className="py-1 text-center">
-                  <span className="text-xs font-semibold">{d}</span> <span className="text-[10px] text-muted">{fmtDateShort(date)}</span>
+              <Card key={d} className={cx("min-h-[420px] p-2", isToday && "ring-2 ring-accent/50")}>
+                <div className="mb-2 flex items-baseline justify-between px-1">
+                  <span className={cx("font-display text-lg", isToday && "text-accent")}>{d}</span>
+                  <span className="text-xs text-muted">{addDays(monday, i).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>
                 </div>
-                {list.map((x) =>
-                  x.row ? (
-                    <button key={x.k} type="button" onClick={() => setEditing(x.row)} className="anim-item mt-1 block w-full rounded-xl bg-surface-solid/80 p-2 text-left text-[11px] hover:ring-1 hover:ring-accent/40">
-                      <span className="tabular block text-muted">{fmtTime(x.time)}</span>
-                      <span className="block font-medium">{x.title}</span>
-                      <span className="block text-[10px] text-muted">
-                        {x.sub}
-                        {x.once && " · once"}
-                      </span>
-                    </button>
-                  ) : (
-                    <div key={x.k} className="mt-1 rounded-xl border border-dashed border-line p-2 text-[11px] text-muted">
-                      <span className="tabular block">{fmtTime(x.time)}</span>
-                      <span className="block">{x.title}</span>
-                    </div>
-                  ),
-                )}
-              </div>
+                {!list.length && <p className="px-1 py-4 text-center text-xs text-muted">Free day</p>}
+                <div className="space-y-1.5">
+                  {list.map((x) => {
+                    const body = (
+                      <>
+                        <span className="tabular block text-[11px] text-muted">
+                          {fmtTime(x.time)}
+                          {x.end ? ` – ${fmtTime(x.end)}` : ""}
+                        </span>
+                        <span className="block text-[13px] leading-snug font-medium">{x.title}</span>
+                        <span className="block text-[11px] text-muted">
+                          {x.sub}
+                          {x.once && " · once"}
+                        </span>
+                      </>
+                    );
+                    return x.row ? (
+                      <button
+                        key={x.k}
+                        type="button"
+                        onClick={() => setEditing(x.row)}
+                        className="anim-item block w-full rounded-xl border-l-[3px] px-2.5 py-2 text-left transition-transform hover:translate-x-0.5"
+                        style={{ ...wash(x.color), borderColor: x.color }}
+                      >
+                        {body}
+                      </button>
+                    ) : (
+                      <div key={x.k} className="rounded-xl border border-dashed px-2.5 py-2" style={{ borderColor: x.color }}>
+                        {body}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
             );
           })}
         </div>
-      </Card>
+      </div>
       {editing !== undefined && <ItemModal item={editing} onClose={() => setEditing(undefined)} />}
     </>
   );
@@ -532,7 +558,7 @@ export default function RoutinePage() {
       <PageHeader
         title="Routine"
         icon={Sunrise}
-        subtitle="A plan for every day, and the order to start it in"
+        subtitle="Your plan for every day, and what is coming up"
         actions={
           <Segmented<Tab>
             value={tab}

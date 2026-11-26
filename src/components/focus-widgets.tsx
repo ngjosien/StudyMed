@@ -129,7 +129,7 @@ function Finish({ run }: { run: FocusRun }) {
         }),
       );
       clearFocus();
-      toast.success(`Session saved · +${n} beats${academic ? ` · ${hm(n)} added to ${m!.code}` : ""}`);
+      toast.success(`Session saved · +${n} laurels${academic ? ` · ${hm(n)} added to ${m!.code}` : ""}`);
     } finally {
       setBusy(false);
     }

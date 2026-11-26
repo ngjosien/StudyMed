@@ -1,12 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Coffee, GraduationCap, HeartPulse, Minus, Play, Plus, Sparkles, Square, Timer, Trophy } from "lucide-react";
+import { Coffee, GraduationCap, Minus, Play, Plus, Sparkles, Square, Timer, Trophy } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { addMinutes, fmtDateShort, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
 import { Button, Card, ConfirmDelete, Input, Page, PageHeader, Progress, Segmented } from "../../components/ui";
-import { Beats, useBeats } from "../../components/beats";
+import { Beats, Laurel, useBeats } from "../../components/beats";
 import { useSetting } from "../../stores/ui";
 import {
   BEATS_PER_TODO,
@@ -37,7 +37,7 @@ export default function FocusPage() {
       <PageHeader
         title="Focus"
         icon={Timer}
-        subtitle="Plan your time, then keep going as long as you like. Every focused minute earns a beat."
+        subtitle="Plan your time, then keep going as long as you like. Every focused minute earns a laurel."
         actions={
           <Link to="/rewards" className="glass flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm hover:-translate-y-px">
             <Beats n={balance} />
@@ -293,12 +293,12 @@ function LiveTimer({ run }: { run: FocusRun }) {
         {run.label && <p className="font-display mt-4 text-lg italic">“{run.label}”</p>}
 
         <div className="mt-3 flex items-center gap-2 text-sm">
-          <HeartPulse size={16} style={{ color: "var(--beat)" }} className={cx(p === "focus" && "focus-heart")} />
+          <Laurel size={17} style={{ color: "var(--beat)" }} />
           <span>
             <b className="tabular" style={{ color: "var(--beat)" }}>
               {Math.floor(f / 60_000)}
             </b>{" "}
-            beats earned so far
+            laurels earned so far
           </span>
           {run.breaks > 0 && (
             <span className="text-muted">
@@ -321,7 +321,7 @@ function LiveTimer({ run }: { run: FocusRun }) {
             Stop
           </Button>
         </div>
-        <p className="mt-3 text-xs text-muted">Started {fmtTime(run.startedAt)}. Breaks don't earn beats; the clock carries on if you switch pages or close the window.</p>
+        <p className="mt-3 text-xs text-muted">Started {fmtTime(run.startedAt)}. Breaks don't earn laurels; the clock carries on if you switch pages or close the window.</p>
       </div>
     </Card>
   );
@@ -388,11 +388,11 @@ function TodayPanel() {
         <Stat label="Focused" value={minutes ? hm(minutes) : "0m"} />
         <Stat label="Sessions" value={String(sessions.length)} />
         <Stat label="To-dos done" value={String(todos.length)} />
-        <Stat label="Beats earned" value={<Beats n={earned} unit={false} />} />
+        <Stat label="Laurels earned" value={<Beats n={earned} unit={false} />} />
       </div>
       <div className="rule-fine my-4" />
       <p className="text-xs leading-relaxed text-muted">
-        <HeartPulse size={12} className="mr-1 inline" style={{ color: "var(--beat)" }} />1 beat per focused minute · {BEATS_PER_TODO} beats per finished to-do. Spend them in{" "}
+        <Laurel size={13} className="mr-1 inline align-[-2px]" style={{ color: "var(--beat)" }} />1 laurel per focused minute · {BEATS_PER_TODO} laurels per finished to-do. Spend them in{" "}
         <Link to="/rewards" className="text-accent underline">
           Rewards
         </Link>
@@ -482,7 +482,7 @@ function History() {
                 </div>
               </div>
               <Beats n={s.focus_minutes} sign unit={false} className="text-sm" />
-              <ConfirmDelete iconOnly label="Delete session (removes its beats and study minutes)" onConfirm={() => mutate(db.remove("focus_sessions", s.id))} />
+              <ConfirmDelete iconOnly label="Delete session (removes its laurels and study minutes)" onConfirm={() => mutate(db.remove("focus_sessions", s.id))} />
             </div>
           );
         })}

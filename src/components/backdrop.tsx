@@ -4,6 +4,9 @@ import { neurons } from "./scenes/neurons";
 import { xray } from "./scenes/xray";
 import { cells } from "./scenes/cells";
 import { heartbeat } from "./scenes/heartbeat";
+import { bronchi } from "./scenes/bronchi";
+import { capillaries } from "./scenes/capillaries";
+import { histology } from "./scenes/histology";
 
 /*
  * The living background: one-colour scenes drawn on a canvas. This engine handles size,
@@ -15,12 +18,15 @@ export const SCENES = [
   { id: "cells", label: "Cells" },
   { id: "heartbeat", label: "Heartbeat" },
   { id: "xray", label: "X-ray" },
+  { id: "bronchi", label: "Bronchial tree" },
+  { id: "capillaries", label: "Capillary bed" },
+  { id: "histology", label: "Histology slide" },
   { id: "wash", label: "Plain" },
 ] as const;
 export type SceneId = (typeof SCENES)[number]["id"];
 type Drawn = Exclude<SceneId, "wash">;
 
-const FLAT: Record<Drawn, SceneFactory> = { neurons, cells, heartbeat, xray };
+const FLAT: Record<Drawn, SceneFactory> = { neurons, cells, heartbeat, xray, bronchi, capillaries, histology };
 
 /** Settings from before the scenes were split ("neural", "still") map onto the new ones. */
 export function normalizeScene(v: unknown): SceneId {

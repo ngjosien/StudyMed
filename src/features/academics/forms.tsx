@@ -6,6 +6,7 @@ import { useRows } from "../../lib/hooks";
 import { GRADE_NAMES, TARGETS } from "../../lib/grades";
 import { fmtDateTime, today } from "../../lib/dates";
 import { EXAM_FORMATS, HOMEWORK_STATUS, HOMEWORK_TYPES, KIND_NAMES, STATUS_COLOR, useModules } from "./common";
+import { useEventMatchOptions } from "./hours";
 
 export function ModuleForm({ state }: { state: FormState }) {
   return (
@@ -154,6 +155,7 @@ export function TopicForm({ state }: { state: FormState }) {
 
 export function PortfolioForm({ state }: { state: FormState }) {
   const { options } = useModules();
+  const eventOptions = useEventMatchOptions();
   return (
     <FormModal
       open={state.open}
@@ -169,7 +171,8 @@ export function PortfolioForm({ state }: { state: FormState }) {
         { key: "role", label: "Your role", type: "text" },
         { key: "start_date", label: "Started", type: "date" },
         { key: "end_date", label: "Ended", type: "date", placeholder: "Still going" },
-        { key: "hours", label: "Hours", type: "number" },
+        { key: "hours", label: "Hours before tracking here", type: "number", hint: "Log new sessions from the portfolio page." },
+        { key: "count_events", label: "Also count these events as hours", type: "select", options: eventOptions, full: true, hint: "Past events of this kind add their length to this activity." },
         { key: "highlight", label: "Highlight", type: "checkbox", placeholder: "Feature at the top" },
         { key: "summary_md", label: "What happened", type: "markdown" },
         { key: "reflection_md", label: "Why it matters for medicine", type: "markdown", placeholder: "What you saw, felt and learned" },

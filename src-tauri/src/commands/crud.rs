@@ -29,7 +29,7 @@ const TABLES: &[&str] = &[
     "weekly_limits", "goal_items", "goal_deposits",
     "class_slots", "tick_goals", "tick_goal_steps", "tick_goal_ticks",
     "routine_items", "routine_ticks", "study_targets",
-    "focus_sessions", "beats", "rewards",
+    "focus_sessions", "beats", "rewards", "activity_logs",
 ];
 
 /// Tables that must not be listed generically (contents gated by the vault).

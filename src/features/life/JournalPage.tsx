@@ -29,6 +29,25 @@ const PAPERS: { id: string; label: string; page: string; pattern?: string; size?
 ];
 const serif: CSSProperties = { fontFamily: '"Garamond", "Playfair Display Variable", Georgia, serif' };
 
+/** Gibbs' reflective cycle (1988): six stages, each with the question it answers. */
+export const GIBBS = [
+  { id: "description", title: "Description", prompt: "What happened? Where and when, who was there, what did you and others do?" },
+  { id: "feelings", title: "Feelings", prompt: "What were you thinking and feeling at the time, and afterwards?" },
+  { id: "evaluation", title: "Evaluation", prompt: "What was good and bad about it? What went well, and what didn't?" },
+  { id: "analysis", title: "Analysis", prompt: "Why did it go that way? What sense can you make of it, and what do theory or your notes say?" },
+  { id: "conclusion", title: "Conclusion", prompt: "What did you learn? What else could you have done?" },
+  { id: "action", title: "Action plan", prompt: "If it happened again, what would you do? What will you do next to be ready?" },
+] as const;
+type Gibbs = Partial<Record<(typeof GIBBS)[number]["id"], string>>;
+const parseGibbs = (s: unknown): Gibbs => {
+  try {
+    return s ? (JSON.parse(String(s)) as Gibbs) : {};
+  } catch {
+    return {};
+  }
+};
+const gibbsText = (g: Gibbs) => GIBBS.map((x) => g[x.id] ?? "").join(" ").trim();
+
 function MiniCalendar({ value, onPick, marked }: { value: string; onPick: (d: string) => void; marked: Map<string, string> }) {
   const [month, setMonth] = useState(() => startOfMonth(parse(value) ?? new Date()));
   useEffect(() => setMonth(startOfMonth(parse(value) ?? new Date())), [value]);
@@ -72,13 +91,39 @@ interface Draft {
   mood: string | null;
   grateful: string;
   paper: string;
+  format: "free" | "gibbs";
+  gibbs: Gibbs;
 }
 
-function Book({ date, entry, defaultPaper, onPaper }: { date: string; entry: Row | undefined; defaultPaper: string; onPaper: (p: string) => void }) {
+function Book({
+  date,
+  entry,
+  defaultPaper,
+  onPaper,
+  defaultFormat,
+  onFormat,
+}: {
+  date: string;
+  entry: Row | undefined;
+  defaultPaper: string;
+  onPaper: (p: string) => void;
+  defaultFormat: "free" | "gibbs";
+  onFormat: (f: "free" | "gibbs") => void;
+}) {
   const mutate = useMutate();
-  const blank: Draft = { title: "", body: "", mood: null, grateful: "", paper: defaultPaper };
+  const blank: Draft = { title: "", body: "", mood: null, grateful: "", paper: defaultPaper, format: defaultFormat, gibbs: {} };
   const [v, setV] = useState<Draft>(
-    entry ? { title: entry.title ?? "", body: entry.body_md ?? "", mood: entry.mood ?? null, grateful: entry.grateful ?? "", paper: entry.paper ?? defaultPaper } : blank,
+    entry
+      ? {
+          title: entry.title ?? "",
+          body: entry.body_md ?? "",
+          mood: entry.mood ?? null,
+          grateful: entry.grateful ?? "",
+          paper: entry.paper ?? defaultPaper,
+          format: entry.format === "gibbs" ? "gibbs" : "free",
+          gibbs: parseGibbs(entry.gibbs_json),
+        }
+      : blank,
   );
   const [id, setId] = useState<number | undefined>(entry?.id);
   const [state, setState] = useState<"saved" | "dirty" | "saving">("saved");
@@ -93,9 +138,17 @@ function Book({ date, entry, defaultPaper, onPaper }: { date: string; entry: Row
     timer.current = undefined;
     queue.current = queue.current.then(async () => {
       const d = latest.current;
-      if (!idRef.current && !d.title.trim() && !d.body.trim() && !d.mood && !d.grateful.trim()) return setState("saved");
+      if (!idRef.current && !d.title.trim() && !d.body.trim() && !d.mood && !d.grateful.trim() && !gibbsText(d.gibbs)) return setState("saved");
       setState("saving");
-      const values = { title: d.title.trim() || null, body_md: d.body, mood: d.mood, grateful: d.grateful.trim() || null, paper: d.paper };
+      const values = {
+        title: d.title.trim() || null,
+        body_md: d.body,
+        mood: d.mood,
+        grateful: d.grateful.trim() || null,
+        paper: d.paper,
+        format: d.format,
+        gibbs_json: gibbsText(d.gibbs) ? JSON.stringify(d.gibbs) : null,
+      };
       try {
         if (idRef.current) await mutate(db.update("journal_entries", idRef.current, values));
         else {
@@ -138,7 +191,10 @@ function Book({ date, entry, defaultPaper, onPaper }: { date: string; entry: Row
   const d = parse(date)!;
   const paper = PAPERS.find((p) => p.id === v.paper) ?? PAPERS[0];
   const mood = MOODS.find((m) => m.id === v.mood);
-  const words = v.body.trim() ? v.body.trim().split(/\s+/).length : 0;
+  const text = v.format === "gibbs" ? gibbsText(v.gibbs) : v.body.trim();
+  const words = text ? text.split(/\s+/).length : 0;
+  const filled = GIBBS.filter((x) => v.gibbs[x.id]?.trim()).length;
+  const lined: CSSProperties = { ...serif, lineHeight: `${LINE}px`, backgroundImage: paper.pattern, backgroundSize: paper.size, backgroundAttachment: "local" };
 
   return (
     <div className="anim-page mx-auto flex min-h-full max-w-6xl flex-col p-5 lg:flex-row">
@@ -210,8 +266,30 @@ function Book({ date, entry, defaultPaper, onPaper }: { date: string; entry: Row
         style={{ color: INK, backgroundColor: paper.page }}
       >
         <span className="pointer-events-none absolute inset-y-0 left-0 hidden w-10 bg-gradient-to-r from-black/15 to-transparent lg:block" />
-        <div className="flex h-8 items-center gap-2 text-xs opacity-70">
-          <span className="ml-auto inline-flex items-center gap-1">
+        <div className="flex h-8 items-center gap-2 text-xs">
+          <div className="inline-flex rounded-full p-0.5" style={{ background: "rgba(64,50,47,.08)" }}>
+            {(
+              [
+                ["free", "Free writing"],
+                ["gibbs", "Gibbs reflection"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                type="button"
+                key={id}
+                aria-pressed={v.format === id}
+                onClick={() => {
+                  change({ format: id });
+                  onFormat(id);
+                }}
+                className="rounded-full px-3 py-1 font-medium transition-colors"
+                style={v.format === id ? { background: INK, color: paper.page } : { opacity: 0.7 }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="ml-auto inline-flex items-center gap-1 opacity-70">
             {state === "saving" ? <Loader2 size={12} className="animate-spin" /> : state === "saved" ? <Check size={12} /> : null}
             {state === "dirty" ? "Unsaved" : state === "saving" ? "Saving" : `${words} words`}
           </span>
@@ -223,16 +301,60 @@ function Book({ date, entry, defaultPaper, onPaper }: { date: string; entry: Row
           placeholder="Give today a title"
           className="font-display mb-4 w-full bg-transparent text-2xl outline-none placeholder:opacity-30"
         />
-        <textarea
-          value={v.body}
-          autoFocus
-          onChange={(e) => change({ body: e.target.value })}
-          onBlur={() => timer.current && persist()}
-          placeholder="Dear diary…"
-          spellCheck
-          className="min-h-[58vh] w-full flex-1 resize-none bg-transparent text-[21px] outline-none placeholder:opacity-35"
-          style={{ ...serif, lineHeight: `${LINE}px`, backgroundImage: paper.pattern, backgroundSize: paper.size, backgroundAttachment: "local" }}
-        />
+        {v.format === "free" ? (
+          <textarea
+            value={v.body}
+            autoFocus
+            onChange={(e) => change({ body: e.target.value })}
+            onBlur={() => timer.current && persist()}
+            placeholder="Dear diary…"
+            spellCheck
+            className="min-h-[58vh] w-full flex-1 resize-none bg-transparent text-[21px] outline-none placeholder:opacity-35"
+            style={lined}
+          />
+        ) : (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-2 text-[11px]">
+              {GIBBS.map((x, i) => {
+                const has = !!v.gibbs[x.id]?.trim();
+                return (
+                  <a key={x.id} href={`#gibbs-${x.id}`} onClick={(e) => (e.preventDefault(), document.getElementById(`gibbs-${x.id}`)?.focus())} className="flex items-center gap-1">
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold"
+                      style={has ? { background: INK, color: paper.page } : { boxShadow: `inset 0 0 0 1px ${INK}55` }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="tracking-wide uppercase opacity-70">{x.title}</span>
+                    {i < GIBBS.length - 1 && <span className="mx-1 opacity-30">→</span>}
+                  </a>
+                );
+              })}
+              <span className="ml-auto opacity-60">{filled}/6 stages</span>
+            </div>
+            {GIBBS.map((x, i) => (
+              <section key={x.id}>
+                <h3 className="font-display flex items-baseline gap-2 text-xl">
+                  <span className="text-sm opacity-50">{i + 1}.</span> {x.title}
+                </h3>
+                <p className="mb-1 text-sm italic opacity-60" style={serif}>
+                  {x.prompt}
+                </p>
+                <textarea
+                  id={`gibbs-${x.id}`}
+                  value={v.gibbs[x.id] ?? ""}
+                  autoFocus={i === 0 && !filled}
+                  onChange={(e) => change({ gibbs: { ...latest.current.gibbs, [x.id]: e.target.value } })}
+                  onBlur={() => timer.current && persist()}
+                  spellCheck
+                  rows={3}
+                  className="w-full resize-none bg-transparent text-[19px] outline-none"
+                  style={{ ...lined, minHeight: LINE * 3, fieldSizing: "content" } as CSSProperties}
+                />
+              </section>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -245,12 +367,13 @@ export default function JournalPage() {
   const [drawer, setDrawer] = useState(true);
   const [search, setSearch] = useState("");
   const [paper, setPaper] = useSetting<string>("journal.paper", "lined");
+  const [format, setFormat] = useSetting<"free" | "gibbs">("journal.format", "free");
   const entry = rows.find((r) => r.entry_date === date);
   const marked = useMemo(
-    () => new Map(rows.filter((r) => r.body_md?.trim() || r.title || r.mood).map((r) => [r.entry_date as string, MOODS.find((m) => m.id === r.mood)?.color ?? "#f4cddb"])),
+    () => new Map(rows.filter((r) => r.body_md?.trim() || r.title || r.mood || r.gibbs_json).map((r) => [r.entry_date as string, MOODS.find((m) => m.id === r.mood)?.color ?? "#f4cddb"])),
     [rows],
   );
-  const listed = rows.filter((r) => `${r.title ?? ""} ${r.body_md ?? ""} ${r.grateful ?? ""}`.toLowerCase().includes(search.toLowerCase()));
+  const listed = rows.filter((r) => `${r.title ?? ""} ${r.body_md ?? ""} ${r.grateful ?? ""} ${gibbsText(parseGibbs(r.gibbs_json))}`.toLowerCase().includes(search.toLowerCase()));
 
   useEffect(() => {
     const id = params.get("id");
@@ -293,8 +416,11 @@ export default function JournalPage() {
                     {Number(String(r.entry_date).slice(8))}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm">{r.title || (r.body_md ?? "").slice(0, 60) || "Untitled"}</span>
-                    <span className="block text-[11px] text-muted">{fmtMonth(parse(r.entry_date)!)}</span>
+                    <span className="block truncate text-sm">{r.title || (r.format === "gibbs" ? parseGibbs(r.gibbs_json).description : r.body_md)?.slice(0, 60) || "Untitled"}</span>
+                    <span className="block text-[11px] text-muted">
+                      {fmtMonth(parse(r.entry_date)!)}
+                      {r.format === "gibbs" && " · Gibbs reflection"}
+                    </span>
                   </span>
                 </button>
               )}
@@ -309,7 +435,7 @@ export default function JournalPage() {
           </div>
         )}
         {/* Wait for entries to load so an existing day is never treated as new. */}
-        {isSuccess && <Book key={date} date={date} entry={entry} defaultPaper={paper} onPaper={setPaper} />}
+        {isSuccess && <Book key={date} date={date} entry={entry} defaultPaper={paper} onPaper={setPaper} defaultFormat={format} onFormat={setFormat} />}
       </div>
     </div>
   );

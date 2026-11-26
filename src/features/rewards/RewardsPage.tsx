@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Gift, HeartPulse, ListTodo, Pencil, Plus, Timer, Undo2 } from "lucide-react";
+import { Gift, ListTodo, Pencil, Plus, Timer, Undo2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { fmtDateShort, fmtTime } from "../../lib/dates";
 import { cx } from "../../lib/format";
 import { toast } from "../../stores/toast";
 import { Button, Card, ConfirmDelete, Field, IconButton, Input, Modal, Page, PageHeader, Progress } from "../../components/ui";
-import { Beats, useBeats } from "../../components/beats";
+import { Beats, Laurel, useBeats } from "../../components/beats";
 import { BEATS_PER_TODO } from "../../lib/focus";
 
 const EMOJIS = ["🧋", "🍰", "🎮", "📺", "😴", "🛍️", "🍜", "🎬", "🏸", "📚", "💅", "☕", "🍦", "🎧", "🌸", "🎁"];
@@ -37,7 +37,7 @@ export default function RewardsPage() {
       <PageHeader
         title="Rewards"
         icon={Gift}
-        subtitle="Earn beats by focusing and finishing to-dos, then spend them on treats you choose."
+        subtitle="Earn laurels by focusing and finishing to-dos, then spend them on treats you choose."
         actions={
           <Button variant="primary" icon={Plus} onClick={() => setEdit("new")}>
             New treat
@@ -51,10 +51,10 @@ export default function RewardsPage() {
             <div>
               <p className="eyebrow">Your balance</p>
               <div className="font-display tabular mt-1 flex items-center gap-2 text-[52px] leading-none" style={{ color: "var(--beat)" }}>
-                <HeartPulse size={40} strokeWidth={2} className="focus-heart" />
+                <Laurel size={46} />
                 {balance.toLocaleString()}
               </div>
-              <p className="mt-2 text-sm text-muted">beats to spend</p>
+              <p className="mt-2 text-sm text-muted">laurels to spend</p>
             </div>
             <div className="grid grid-cols-3 gap-3 self-center md:justify-self-end">
               <Mini label="Today" n={today} />
@@ -66,14 +66,14 @@ export default function RewardsPage() {
             <Link to="/focus" className="flex items-center gap-3 bg-surface-solid/60 px-7 py-4 hover:bg-surface-solid">
               <Timer size={18} className="text-accent" />
               <span className="flex-1 text-sm">
-                <b>1 beat</b> for every minute you focus
+                <b>1 laurel</b> for every minute you focus
               </span>
               <span className="text-xs text-accent">Start a session →</span>
             </Link>
             <Link to="/todos" className="flex items-center gap-3 bg-surface-solid/60 px-7 py-4 hover:bg-surface-solid">
               <ListTodo size={18} className="text-accent" />
               <span className="flex-1 text-sm">
-                <b>{BEATS_PER_TODO} beats</b> for every to-do you finish
+                <b>{BEATS_PER_TODO} laurels</b> for every to-do you finish
               </span>
               <span className="text-xs text-accent">Open to-dos →</span>
             </Link>
@@ -86,7 +86,7 @@ export default function RewardsPage() {
           {rewards.length === 0 ? (
             <Card className="p-6 text-center">
               <p className="font-display text-lg">Set up treats worth working for</p>
-              <p className="mt-1 text-sm text-muted">An hour of focus earns 60 beats. Price treats so they feel earned.</p>
+              <p className="mt-1 text-sm text-muted">An hour of focus earns 60 laurels. Price treats so they feel earned.</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Button variant="primary" onClick={() => mutate(db.insertMany("rewards", STARTERS))}>
                   Add some starter treats
@@ -142,7 +142,7 @@ export default function RewardsPage() {
                     {b.amount > 0 ? `+${b.amount}` : b.amount}
                   </span>
                   {b.source_type === "rewards" ? (
-                    <IconButton icon={Undo2} label="Undo (give the beats back)" onClick={() => mutate(db.remove("beats", b.id))} />
+                    <IconButton icon={Undo2} label="Undo (give the laurels back)" onClick={() => mutate(db.remove("beats", b.id))} />
                   ) : (
                     <span className="w-8" />
                   )}
@@ -217,7 +217,7 @@ function TreatModal({ row, onClose }: { row: Row | null; onClose: () => void }) 
         <Field label="Treat">
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bubble tea" />
         </Field>
-        <Field label="Cost in beats" hint={c > 0 ? `About ${c >= 60 ? `${Math.round((c / 60) * 10) / 10} hours` : `${c} minutes`} of focus, or ${Math.ceil(c / BEATS_PER_TODO)} to-dos.` : undefined}>
+        <Field label="Cost in laurels" hint={c > 0 ? `About ${c >= 60 ? `${Math.round((c / 60) * 10) / 10} hours` : `${c} minutes`} of focus, or ${Math.ceil(c / BEATS_PER_TODO)} to-dos.` : undefined}>
           <Input type="number" min={1} value={cost} onChange={(e) => setCost(e.target.value)} />
         </Field>
       </div>

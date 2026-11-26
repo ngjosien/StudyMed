@@ -8,6 +8,7 @@ export const EXAM_FORMATS = ["MCQ", "Written", "Practical", "Open-Book", "Oral",
 
 export const PORTFOLIO_KINDS: Record<string, string> = {
   Volunteering: "#f4a6c0",
+  CCA: "#9fd3e0",
   "Clinical & shadowing": "#a6e3d0",
   "Important events": "#c3a6f4",
   Leadership: "#f4b8a6",

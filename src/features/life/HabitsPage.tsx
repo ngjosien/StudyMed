@@ -6,6 +6,7 @@ import { addDays, addMonths, fmtMonth, parse, startOfMonth, startOfWeek, toDateS
 import { cx, pct } from "../../lib/format";
 import { Button, Card, Empty, IconButton, Page, PageHeader } from "../../components/ui";
 import { FormModal, useFormState } from "../../components/form";
+import { Garden } from "./garden";
 
 const GOALS = [
   { value: 7, label: "Daily" },
@@ -107,7 +108,7 @@ export default function HabitsPage() {
       <PageHeader
         title="Habits"
         icon={Flame}
-        subtitle="Check off manually — this week and this month side by side"
+        subtitle="Water a habit by ticking it. Keep going and it grows into a flower."
         actions={
           <Button variant="primary" icon={Plus} onClick={() => form.openNew()}>
             New habit
@@ -121,6 +122,7 @@ export default function HabitsPage() {
           </Empty>
         ) : (
           <>
+            <Garden habits={habits} byHabit={byHabit} onWater={(h, on) => toggle(h, t, on)} />
             <Card className="overflow-hidden">
               <div className="flex items-center gap-2 border-b border-line px-4 py-3">
                 <h2 className="flex-1 font-semibold">Weekly tracker</h2>

@@ -14,6 +14,7 @@ import { normalizeScene, SceneBackdrop } from "./backdrop";
 import { installNow, RESTART_DELAY_S, startAutoUpdate, useUpdater } from "../lib/updater";
 import { useAllowance } from "../lib/allowance";
 import { BeatsChip } from "./beats";
+import { AppMark } from "./app-mark";
 import { FocusFinish, FocusPill } from "./focus-widgets";
 
 const nextTheme: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
@@ -121,7 +122,7 @@ export function Sidebar() {
       style={{ width: collapsed ? COLLAPSED_W : sidebarWidth }}
     >
       <div className={cx("flex items-center gap-2 px-4 pt-4 pb-3", collapsed && "flex-col px-2")}>
-        <img src="/app-icon.svg" alt="" draggable={false} className="h-9 w-9 shrink-0 rounded-[10px] shadow-[0_6px_14px_-6px_rgba(54,16,28,0.6)]" />
+        <AppMark className="h-9 w-9" />
         {!collapsed && <span className="flex-1 truncate">
             <span className="font-display block text-[18px] leading-none">StudyMed</span>
             <span className="eyebrow !text-[9px]">Medicine · Life</span>

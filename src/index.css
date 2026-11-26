@@ -503,9 +503,9 @@ button:active:not(:disabled) {
   background-clip: padding-box;
 }
 
-/* ------------------------------------------------------------- Beats + focus */
-:root { --beat: #e0466b; --gold: #c08a1e; }
-html.dark { --beat: #ff7a98; --gold: #f0c35a; }
+/* ------------------------------------------------------------- Laurels + focus */
+:root { --beat: #9a7b2f; --gold: #c08a1e; }
+html.dark { --beat: #e2c47e; --gold: #f0c35a; }
 @keyframes beat-pop {
   0% { opacity: 0; transform: translate(-50%, 4px) scale(0.8); }
   20% { opacity: 1; transform: translate(-50%, -6px) scale(1.1); }
@@ -530,6 +530,13 @@ html.dark { --beat: #ff7a98; --gold: #f0c35a; }
   50% { filter: drop-shadow(0 0 10px var(--gold)); }
 }
 .focus-over { animation: glow-pulse 2.4s ease-in-out infinite; }
+/* Habit garden */
+@keyframes garden-sway { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+.garden-sway { animation: garden-sway 5.5s ease-in-out infinite; }
+@keyframes garden-grow { 0% { transform: scale(1); } 35% { transform: scale(1.08) translateY(-3px); } 100% { transform: scale(1); } }
+.garden-grow { animation: garden-grow 0.9s var(--ease); }
+@keyframes garden-splash { 0% { opacity: 0; transform: translate(-50%, -6px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 34px); } }
+.garden-splash { animation: garden-splash 1.1s ease-in both; }
 @media (prefers-reduced-motion: reduce) {
-  .beat-pop, .beat-thump, .focus-heart, .focus-breathe, .focus-over { animation: none; }
+  .beat-pop, .beat-thump, .focus-heart, .focus-breathe, .focus-over, .garden-sway, .garden-grow, .garden-splash { animation: none; }
 }

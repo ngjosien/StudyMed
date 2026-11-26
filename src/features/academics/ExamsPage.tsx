@@ -13,6 +13,7 @@ import { Connections } from "../../components/connections";
 import { LinkChips, LinkedSections } from "../../components/linked";
 import { CONFIDENCE, ModuleChip, useModules } from "./common";
 import { ExamForm } from "./forms";
+import { CountdownStrip, ExamPlan, PlanModal } from "./RevisionPlan";
 
 const KINDS = ["modules", "school_notes", "homework", "events", "people", "todos", "review_topics"];
 
@@ -79,7 +80,7 @@ function TopicChecklist({ examId }: { examId: number }) {
   );
 }
 
-function ExamDetail({ examId, onEdit }: { examId: number; onEdit: (r: Row) => void }) {
+function ExamDetail({ examId, onEdit, onPlan }: { examId: number; onEdit: (r: Row) => void; onPlan: (r: Row) => void }) {
   const { byId } = useModules();
   const e = useRow("exams", examId).data;
   if (!e) return null;
@@ -110,6 +111,8 @@ function ExamDetail({ examId, onEdit }: { examId: number; onEdit: (r: Row) => vo
 
       <TopicChecklist examId={examId} />
 
+      <ExamPlan exam={e} onPlan={() => onPlan(e)} />
+
       <div>
         <h3 className="mb-2 text-sm font-semibold">Connected pages</h3>
         <Connections type="exams" id={examId} />
@@ -139,6 +142,7 @@ export default function ExamsPage() {
   const { rows } = useRows("exams", undefined, "module_id, start_at, id");
   const topics = useRows("exam_topics").rows;
   const openExam = rows.find((e) => e.id === openId);
+  const [planning, setPlanning] = useState<Row | null>(null);
 
   const renderExam = (e: Row) => {
     const ts = topics.filter((t) => t.exam_id === e.id);
@@ -180,7 +184,8 @@ export default function ExamsPage() {
           </Button>
         }
       />
-      <Page className="space-y-4">
+      <Page className="space-y-6">
+        <CountdownStrip exams={rows} byId={byId} onOpen={setOpenId} onPlan={setPlanning} />
         <LinkedSections
           type="exams"
           rows={rows}
@@ -207,9 +212,10 @@ export default function ExamsPage() {
           )
         }
       >
-        {openId && <ExamDetail examId={openId} onEdit={form.openEdit} />}
+        {openId && <ExamDetail examId={openId} onEdit={form.openEdit} onPlan={setPlanning} />}
       </Drawer>
       <ExamForm state={form} />
+      {planning && <PlanModal exam={planning} code={byId.get(planning.module_id)?.code ?? ""} onClose={() => setPlanning(null)} />}
     </>
   );
 }

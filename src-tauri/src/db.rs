@@ -15,6 +15,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0005_timetable_goals.sql"),
     include_str!("../migrations/0006_routine_links.sql"),
     include_str!("../migrations/0007_focus_beats.sql"),
+    include_str!("../migrations/0008_plans_hours_gibbs.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -146,6 +147,32 @@ mod tests {
         conn.execute("DELETE FROM modules WHERE id = 1", []).unwrap();
         let classes: i64 = conn.query_row("SELECT count(*) FROM class_slots", [], |r| r.get(0)).unwrap();
         assert_eq!(classes, 0);
+    }
+
+    #[test]
+    fn revision_plans_hours_and_gibbs() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO exams(id, module_id, name, start_at) VALUES (1, 1, 'Final', '2026-12-20 09:00');
+             INSERT INTO exam_topics(id, exam_id, title) VALUES (1, 1, 'Cardiac cycle');
+             INSERT INTO todos(id, title, date, plan_exam_id, plan_topic_id, plan_kind) VALUES (1, 'Learn: Cardiac cycle', '2026-12-01', 1, 1, 'learn');
+             INSERT INTO portfolio_entries(id, title, category, kind, count_events) VALUES (1, 'Red Cross Youth', 'Project', 'CCA', 'subtype:CCA: Red Cross');
+             INSERT INTO activity_logs(entry_id, date, hours) VALUES (1, '2026-11-20', 3.5);
+             INSERT INTO journal_entries(id, entry_date, format, gibbs_json) VALUES (1, '2026-11-26', 'gibbs', '{\"description\":\"First ward round\"}');",
+        )
+        .unwrap();
+        assert!(conn.execute("INSERT INTO activity_logs(entry_id, date, hours) VALUES (1, '2026-11-21', 0)", []).is_err());
+        // Gibbs stages are searchable.
+        let hits: i64 = conn.query_row("SELECT count(*) FROM search_fts WHERE search_fts MATCH 'ward' AND entity_type = 'journal_entries'", [], |r| r.get(0)).unwrap();
+        assert_eq!(hits, 1);
+        // A deleted topic leaves its to-do; a deleted exam takes its plan with it.
+        conn.execute_batch("DELETE FROM exam_topics WHERE id = 1;").unwrap();
+        let topic: Option<i64> = conn.query_row("SELECT plan_topic_id FROM todos WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(topic, None);
+        conn.execute_batch("DELETE FROM exams WHERE id = 1; DELETE FROM portfolio_entries WHERE id = 1;").unwrap();
+        let left: i64 = conn.query_row("SELECT (SELECT count(*) FROM todos) + (SELECT count(*) FROM activity_logs)", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]

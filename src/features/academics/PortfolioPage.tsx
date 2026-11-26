@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { Award, Briefcase, FileDown, FlaskConical, HeartHandshake, Pencil, Plus, Printer, ShieldCheck, Sparkles, Star, Stethoscope, UsersRound } from "lucide-react";
+import { Award, Briefcase, FileDown, FlaskConical, HeartHandshake, Medal, Pencil, Plus, Printer, ShieldCheck, Sparkles, Star, Stethoscope, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api, db, type Row } from "../../lib/api";
 import { useRows, useTagsBy } from "../../lib/hooks";
@@ -16,9 +16,11 @@ import { LinkChips, LinkedSections } from "../../components/linked";
 import { KIND_NAMES, ModuleChip, PORTFOLIO_KINDS, useModules } from "./common";
 import { PortfolioForm } from "./forms";
 import { toast } from "../../stores/toast";
+import { fmtHours, HOUR_KINDS, HoursBoard, HoursDetail, LogHoursModal, useActivityHours, type Hours } from "./hours";
 
 const KIND_ICON: Record<string, LucideIcon> = {
   Volunteering: HeartHandshake,
+  CCA: Medal,
   "Clinical & shadowing": Stethoscope,
   "Important events": Sparkles,
   Leadership: UsersRound,
@@ -31,10 +33,10 @@ const KINDS = ["events", "people", "modules", "moments", "todos"];
 const plain = (md: string) => md.replace(/[#*_>`]/g, "");
 
 const range = (e: Row) => [fmtDate(e.start_date), fmtDate(e.end_date)].filter(Boolean).join(" – ");
-const details = (e: Row, byId: Map<number, Row>) =>
-  [range(e), e.role, e.organisation, e.hours && `${e.hours} hours`, e.referee && `Referee: ${e.referee}`, byId.get(e.module_id)?.code].filter(Boolean).join(" · ");
+const details = (e: Row, byId: Map<number, Row>, hours?: Map<number, Hours>) =>
+  [range(e), e.role, e.organisation, (hours?.get(e.id)?.total ?? Number(e.hours || 0)) > 0 && fmtHours(hours?.get(e.id)?.total ?? Number(e.hours)), e.referee && `Referee: ${e.referee}`, byId.get(e.module_id)?.code].filter(Boolean).join(" · ");
 
-function toMarkdown(entries: Row[], skills: Map<number, string[]>, byId: Map<number, Row>, attachments: Row[]) {
+function toMarkdown(entries: Row[], skills: Map<number, string[]>, byId: Map<number, Row>, attachments: Row[], hours: Map<number, Hours>) {
   const out = ["# Portfolio", "", `_Exported ${new Date().toLocaleDateString()}_`, ""];
   for (const cat of KIND_NAMES) {
     const list = entries.filter((e) => kindOf(e) === cat);
@@ -42,7 +44,7 @@ function toMarkdown(entries: Row[], skills: Map<number, string[]>, byId: Map<num
     out.push(`## ${cat}`, "");
     for (const e of list) {
       out.push(`### ${e.title}`);
-      const meta = details(e, byId);
+      const meta = details(e, byId, hours);
       if (meta) out.push(`*${meta}*`);
       out.push("");
       if (e.summary_md) out.push(e.summary_md, "");
@@ -60,7 +62,7 @@ function toMarkdown(entries: Row[], skills: Map<number, string[]>, byId: Map<num
   return out.join("\n");
 }
 
-function PrintView({ entries, skills, byId, onDone }: { entries: Row[]; skills: Map<number, string[]>; byId: Map<number, Row>; onDone: () => void }) {
+function PrintView({ entries, skills, byId, hours, onDone }: { entries: Row[]; skills: Map<number, string[]>; byId: Map<number, Row>; hours: Map<number, Hours>; onDone: () => void }) {
   useEffect(() => {
     const t = setTimeout(() => {
       window.print();
@@ -81,7 +83,7 @@ function PrintView({ entries, skills, byId, onDone }: { entries: Row[]; skills: 
             {list.map((e) => (
               <article key={e.id} className="mb-5 break-inside-avoid">
                 <h3 className="text-lg font-semibold">{e.title}</h3>
-                <p className="mb-2 text-sm text-gray-600">{details(e, byId)}</p>
+                <p className="mb-2 text-sm text-gray-600">{details(e, byId, hours)}</p>
                 {e.summary_md && <MarkdownView source={e.summary_md} />}
                 {e.reflection_md && (
                   <>
@@ -100,12 +102,12 @@ function PrintView({ entries, skills, byId, onDone }: { entries: Row[]; skills: 
   );
 }
 
-function Hero({ rows }: { rows: Row[] }) {
-  const hours = (k?: string) => rows.filter((e) => !k || kindOf(e) === k).reduce((s, e) => s + Number(e.hours || 0), 0);
+function Hero({ rows, totals }: { rows: Row[]; totals: Map<number, Hours> }) {
+  const hours = (k?: string) => Math.round(rows.filter((e) => !k || kindOf(e) === k).reduce((s, e) => s + (totals.get(e.id)?.total ?? 0), 0) * 10) / 10;
   const stats = [
     [String(rows.length), "experiences"],
-    [String(hours("Volunteering")), "volunteering hours"],
-    [String(hours("Clinical & shadowing")), "clinical hours"],
+    [String(rows.filter((e) => !e.end_date || e.end_date >= new Date().toISOString().slice(0, 10)).length), "still ongoing"],
+    [String(rows.filter((e) => e.highlight).length), "highlights"],
     [String(hours()), "hours in all"],
   ];
   return (
@@ -135,13 +137,15 @@ export default function PortfolioPage() {
   const skills = useTagsBy("portfolio_entries", "skill").by;
   const open = rows.find((r) => r.id === openId);
   const starred = rows.filter((r) => r.highlight);
+  const totals = useActivityHours(rows);
+  const [logFor, setLogFor] = useState<number | null | undefined>(undefined);
 
   const exportMd = async () => {
     const dest = await saveDialog({ defaultPath: "Portfolio.md", filters: [{ name: "Markdown", extensions: ["md"] }] });
     if (!dest) return;
     try {
       const att = await db.list("attachments", { entity_type: "portfolio_entries" });
-      await api.fileWriteText(dest, toMarkdown(rows, skills, byId, att));
+      await api.fileWriteText(dest, toMarkdown(rows, skills, byId, att, totals));
       toast.success("Portfolio exported");
     } catch (e) {
       toast.error(String(e));
@@ -167,7 +171,8 @@ export default function PortfolioPage() {
         }
       />
       <Page className="space-y-7 pt-0">
-        <Hero rows={rows} />
+        <Hero rows={rows} totals={totals} />
+        <HoursBoard entries={rows} hours={totals} onOpen={setOpenId} onLog={(id) => setLogFor(id ?? null)} />
         {starred.length > 0 && (
           <section>
             <h2 className="font-display mb-3 flex items-center gap-2 px-1 text-xl">
@@ -204,7 +209,7 @@ export default function PortfolioPage() {
           grid="ml-5 space-y-3 border-l-2 border-accent/25 pl-8"
           empty={
             <Empty icon={Briefcase} title="Your story starts here">
-              Log volunteering, shadowing and the moments that made you want medicine, while they're still fresh.
+              Log CCAs, volunteering, shadowing and the moments that made you want medicine, while they're still fresh.
             </Empty>
           }
           render={(e) => {
@@ -218,7 +223,7 @@ export default function PortfolioPage() {
                 <Card onClick={() => setOpenId(e.id)} className="p-5">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge color={PORTFOLIO_KINDS[kind]}>{kind}</Badge>
-                    {e.hours ? <Badge>{e.hours} hours</Badge> : null}
+                    {(totals.get(e.id)?.total ?? 0) > 0 ? <Badge>{fmtHours(totals.get(e.id)!.total)}</Badge> : null}
                     <span className="ml-auto text-xs text-muted">{range(e)}</span>
                   </div>
                   <div className="font-display mt-2 text-xl">{e.title}</div>
@@ -256,8 +261,11 @@ export default function PortfolioPage() {
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
               <Badge color={PORTFOLIO_KINDS[kindOf(open)]}>{kindOf(open)}</Badge>
               <ModuleChip module={byId.get(open.module_id)} />
-              {details(open, byId)}
+              {details(open, byId, totals)}
             </div>
+            {(HOUR_KINDS.includes(kindOf(open)) || open.count_events || (totals.get(open.id)?.total ?? 0) > 0) && (
+              <HoursDetail entry={open} h={totals.get(open.id)} onLog={() => setLogFor(open.id)} />
+            )}
             {open.summary_md && <MarkdownView source={open.summary_md} />}
             {open.reflection_md && (
               <div>
@@ -284,7 +292,14 @@ export default function PortfolioPage() {
         )}
       </Drawer>
       <PortfolioForm state={form} />
-      {printing && <PrintView entries={rows} skills={skills} byId={byId} onDone={() => setPrinting(false)} />}
+      {printing && <PrintView entries={rows} skills={skills} byId={byId} hours={totals} onDone={() => setPrinting(false)} />}
+      {logFor !== undefined && (
+        <LogHoursModal
+          entries={rows.filter((e) => HOUR_KINDS.includes(kindOf(e)) || e.count_events || (totals.get(e.id)?.logged ?? 0) > 0)}
+          entryId={logFor ?? undefined}
+          onClose={() => setLogFor(undefined)}
+        />
+      )}
     </>
   );
 }
