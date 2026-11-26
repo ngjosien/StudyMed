@@ -435,7 +435,7 @@ function Sheet({
                 </Fold>
               )}
               {kind && (
-                <Fold icon={Link2} title="Connected pages" note={pending.length ? `${pending.length} linked` : undefined} startOpen>
+                <Fold icon={Link2} title="What's it for?" note={pending.length ? `${pending.length} linked` : undefined} startOpen>
                   <div className="space-y-3">
                     {links?.map((l) => (
                       <div key={l.table + l.col}>

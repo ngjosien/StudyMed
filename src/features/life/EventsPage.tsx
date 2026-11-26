@@ -1,12 +1,14 @@
 ﻿import { useState } from "react";
 import { Link } from "react-router-dom";
-import { PartyPopper, Plus, Pencil, MapPin, Clock, X, Users, CalendarOff, CalendarDays } from "lucide-react";
+import { PartyPopper, Plus, Pencil, MapPin, Clock, X, Users, CalendarOff, CalendarDays, CalendarRange, List } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRow, useRows } from "../../lib/hooks";
 import { useDeepLinkForm } from "../../lib/deeplink";
 import { fmtDateTime, fmtMonth, fmtTime, parse, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
-import { Badge, Button, Card, Checkbox, Drawer, Empty, IconButton, Input, Page, PageHeader } from "../../components/ui";
+import { Badge, Button, Card, Checkbox, Drawer, Empty, IconButton, Input, Page, PageHeader, Segmented } from "../../components/ui";
+import { Countdown, WeekBoard } from "../../components/weekboard";
+import { useSetting } from "../../stores/ui";
 import { FormModal, useFormState } from "../../components/form";
 import { CountdownBadge, LocalImage } from "../../components/shared";
 import { Connections } from "../../components/connections";
@@ -187,6 +189,7 @@ export default function EventsPage() {
   const t = today();
   const isPast = (e: Row) => String(e.end_at ?? e.start_at).slice(0, 10) < t;
   const rows = [...all.filter((e) => !isPast(e)), ...all.filter(isPast).reverse()];
+  const [view, setView] = useSetting<"week" | "list">("view.events", "week");
 
   return (
     <>
@@ -195,12 +198,47 @@ export default function EventsPage() {
         icon={PartyPopper}
         subtitle="Plans and occasions"
         actions={
-          <Button variant="primary" icon={Plus} onClick={() => form.openNew()}>
-            New event
-          </Button>
+          <>
+            <Segmented<"week" | "list">
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "week", label: "Week", icon: CalendarRange },
+                { value: "list", label: "By month", icon: List },
+              ]}
+            />
+            <Button variant="primary" icon={Plus} onClick={() => form.openNew()}>
+              New event
+            </Button>
+          </>
         }
       />
       <Page className="space-y-4">
+        {view === "week" ? (
+          <WeekBoard
+            rows={all}
+            dateOf={(e) => e.start_at}
+            onAdd={(date) => form.openNew({ start_at: date + "T09:00" })}
+            addLabel="Add an event"
+            render={(e) => (
+              <Card onClick={() => setOpenId(e.id)} className="relative overflow-hidden p-2.5 pl-3.5">
+                <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: TYPE_COLOR[e.type] }} />
+                <div className="text-[11px] text-muted">{e.all_day ? "All day" : fmtTime(e.start_at)}</div>
+                <div className="line-clamp-2 text-[13px] leading-snug font-medium">{e.name}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <Countdown date={e.start_at} done={isPast(e)} />
+                  <span className="truncate text-[10.5px] text-muted">{eventKind(e)}</span>
+                </div>
+                {e.location && (
+                  <div className="mt-0.5 truncate text-[11px] text-muted">
+                    <MapPin size={10} className="mr-0.5 inline" />
+                    {e.location}
+                  </div>
+                )}
+              </Card>
+            )}
+          />
+        ) : (
         <LinkedSections
           type="events"
           rows={rows}
@@ -235,6 +273,7 @@ export default function EventsPage() {
             </Card>
           )}
         />
+        )}
       </Page>
       <Drawer
         open={!!open}

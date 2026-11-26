@@ -1,16 +1,18 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ListTodo, Plus, X } from "lucide-react";
+import { CalendarRange, List, ListTodo, Plus, X } from "lucide-react";
 import { api, db, type Row } from "../../lib/api";
 import { useMutate, useRows, useTagsBy } from "../../lib/hooks";
 import { cx, fmtMinutes } from "../../lib/format";
-import { fmtDateShort, fmtTime } from "../../lib/dates";
-import { RECORDS } from "../../lib/records";
-import { Button, Card, Checkbox, ConfirmDelete, Drawer, Empty, Field, IconButton, Input, Page, PageHeader } from "../../components/ui";
+import { fmtDateShort, fmtTime, today } from "../../lib/dates";
+import { Button, Card, Checkbox, ConfirmDelete, Drawer, Empty, Field, IconButton, Input, Page, PageHeader, Segmented } from "../../components/ui";
+import { FormModal, useFormState, type FormState } from "../../components/form";
+import { Countdown, WeekBoard } from "../../components/weekboard";
+import { useSetting } from "../../stores/ui";
 import { MarkdownEditor } from "../../components/markdown";
 import { ReminderPicker, TagInput } from "../../components/shared";
 import { ChoiceField, DateField, TimeField } from "../../components/pickers";
-import { Connections, saveLinks, type Ref } from "../../components/connections";
+import { Connections } from "../../components/connections";
 import { LinkChips, LinkedSections } from "../../components/linked";
 
 const KINDS = ["events", "people", "homework", "exams", "modules", "tick_goals", "portfolio_entries", "savings_goals"];
@@ -143,16 +145,71 @@ function TodoPanel({ todo, allTags, onClose }: { todo: Row; allTags: string[]; o
   );
 }
 
+/* --------------------------------------------------------------- New to-do: every setting up front */
+const PRIORITY_COLOR: Record<string, string> = { Low: "#a6c8f4", Medium: "#f4d8a6", High: "#f4a6a6" };
+function TodoForm({ state }: { state: FormState }) {
+  return (
+    <FormModal
+      open={state.open}
+      onClose={state.close}
+      title={state.record ? "Edit to-do" : "New to-do"}
+      table="todos"
+      record={state.record}
+      defaults={{ priority: "Medium", ...state.defaults }}
+      fields={[
+        { key: "title", label: "To-do", type: "text", required: true, placeholder: "What do you need to do?" },
+        { key: "date", label: "Do it on", type: "date" },
+        { key: "time", label: "At", type: "time" },
+        { key: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => ({ value: p, label: p, color: PRIORITY_COLOR[p] })), required: true, full: true },
+        { key: "est_minutes", label: "Takes about", type: "select", numeric: true, full: true, options: DURATIONS.map((m) => ({ value: m, label: fmtMinutes(m) })) },
+        { key: "notes_md", label: "Notes", type: "markdown", more: true },
+      ]}
+      reminders={{
+        entityType: "todos",
+        base: (v) => (v.date ? (v.time ? v.date + "T" + v.time : v.date) : null),
+        title: (v) => "To-do: " + v.title,
+      }}
+    />
+  );
+}
+
+function TodoCard({ t, onOpen, compact }: { t: Row; onOpen: () => void; compact?: boolean }) {
+  const mutate = useMutate();
+  return (
+    <Card onClick={onOpen} className={cx("flex items-start gap-2.5", compact ? "p-2.5" : "px-4 py-3")}>
+      <span className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={!!t.done} onChange={(c) => mutate(db.update("todos", t.id, doneChange(c)))} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={cx("font-medium", compact ? "line-clamp-2 text-[13px] leading-snug" : "truncate", t.done && "text-muted line-through")}>{t.title}</div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          {!t.done && <Countdown date={t.date} />}
+          {!compact && t.date && <span>{fmtDateShort(t.date)}</span>}
+          {t.time && <span>{fmtTime(t.time)}</span>}
+          {t.priority && t.priority !== "Medium" && (
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY_COLOR[t.priority] }} />
+              {t.priority}
+            </span>
+          )}
+          {t.est_minutes ? <span>{fmtMinutes(t.est_minutes)}</span> : null}
+        </div>
+        <LinkChips type="todos" id={t.id} />
+      </div>
+    </Card>
+  );
+}
+
 /* --------------------------------------------------------------- Page */
 export default function TodosPage() {
-  const mutate = useMutate();
   const [params, setParams] = useSearchParams();
   const { rows } = useRows("todos", { parent_id: null }, "id");
   const tags = useTagsBy("todos", "todo_category");
   const [quick, setQuick] = useState("");
-  const [pending, setPending] = useState<Ref[]>([]);
   const [tab, setTab] = useState("all");
   const [openId, setOpenId] = useState<number | null>(null);
+  const [view, setView] = useSetting<"week" | "list">("view.todos", "week");
+  const form = useFormState();
 
   useEffect(() => {
     const id = params.get("id");
@@ -160,28 +217,41 @@ export default function TodosPage() {
     if (id) setOpenId(Number(id));
     if (id || isNew) {
       setParams({}, { replace: true });
-      if (isNew) setTimeout(() => document.getElementById("todo-quick-add")?.focus(), 50);
+      if (isNew) form.openNew({ date: today() });
     }
   }, [params, setParams]);
 
   const openTodo = rows.find((t) => t.id === openId) ?? null;
-  // On a linked tab, a new to-do has to say which record it belongs to.
-  const needsLink = tab !== "all" && !pending.some((p) => p.type === tab);
 
-  const add = async () => {
-    const title = quick.trim();
-    if (!title || needsLink) return;
-    await mutate(async () => {
-      const t = await db.insert("todos", { title });
-      await saveLinks("todos", t.id, pending);
-    });
+  // Typing a title then Add opens the full form, so the date, priority, reminders and
+  // what it's for can all be chosen before saving.
+  const add = () => {
+    form.openNew({ title: quick.trim() || undefined, date: today() });
     setQuick("");
-    if (tab === "all") setPending([]);
   };
 
   return (
     <>
-      <PageHeader title="To-Dos" icon={ListTodo} subtitle="Sorted by what each one is for" />
+      <PageHeader
+        title="To-Dos"
+        icon={ListTodo}
+        subtitle={view === "week" ? "Your week, day by day" : "Sorted by what each one is for"}
+        actions={
+          <>
+            <Segmented<"week" | "list">
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "week", label: "Week", icon: CalendarRange },
+                { value: "list", label: "By page", icon: List },
+              ]}
+            />
+            <Button variant="primary" icon={Plus} className="!rounded-full" onClick={() => form.openNew({ date: today() })}>
+              New to-do
+            </Button>
+          </>
+        }
+      />
       <Page className="space-y-5">
         <form
           className="glass space-y-2.5 rounded-[18px] p-4"
@@ -198,15 +268,22 @@ export default function TodosPage() {
               placeholder="What do you need to do?"
               className="h-11 min-w-0 flex-1 bg-transparent px-2 text-lg font-semibold outline-none placeholder:text-muted/50"
             />
-            <Button type="submit" variant="primary" icon={Plus} className="h-11 !rounded-full px-6" disabled={!quick.trim() || needsLink}>
+            <Button type="submit" variant="primary" icon={Plus} className="h-11 !rounded-full px-6">
               Add
             </Button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 px-1">
-            <Connections key={tab} type="todos" pending={pending} setPending={setPending} only={tab === "all" ? KINDS : [tab, ...KINDS.filter((k) => k !== tab)]} />
-            {needsLink && <span className="text-xs text-muted">Pick which of your {RECORDS[tab].label.toLowerCase()} it's for.</span>}
-          </div>
+          <p className="px-2 text-xs text-muted">Add opens the details: when, priority, how long, what it's for and reminders.</p>
         </form>
+        {view === "week" ? (
+          <WeekBoard
+            rows={rows}
+            dateOf={(t) => t.date}
+            isOpen={(t) => !t.done}
+            onAdd={(date) => form.openNew({ date })}
+            addLabel="Add a to-do"
+            render={(t) => <TodoCard t={t} compact onOpen={() => setOpenId(t.id)} />}
+          />
+        ) : (
         <LinkedSections
           type="todos"
           rows={rows}
@@ -214,32 +291,17 @@ export default function TodosPage() {
           tab={tab}
           onTab={(t) => {
             setTab(t);
-            setPending([]);
           }}
           empty={
             <Empty icon={ListTodo} title="No to-dos yet">
               Add one above and connect it to the event, person, homework or exam it's for.
             </Empty>
           }
-          render={(t) => (
-            <Card onClick={() => setOpenId(t.id)} className="flex items-start gap-3 px-4 py-3">
-              <span className="pt-0.5" onClick={(e) => e.stopPropagation()}>
-                <Checkbox checked={!!t.done} onChange={(c) => mutate(db.update("todos", t.id, doneChange(c)))} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className={cx("truncate font-medium", t.done && "text-muted line-through")}>{t.title}</div>
-                <LinkChips type="todos" id={t.id} />
-              </div>
-              {t.date && (
-                <span className="shrink-0 text-xs text-muted">
-                  {fmtDateShort(t.date)}
-                  {t.time && `, ${fmtTime(t.time)}`}
-                </span>
-              )}
-            </Card>
-          )}
+          render={(t) => <TodoCard t={t} onOpen={() => setOpenId(t.id)} />}
         />
+        )}
       </Page>
+      <TodoForm state={form} />
       {openTodo && <TodoPanel key={openTodo.id} todo={openTodo} allTags={tags.names} onClose={() => setOpenId(null)} />}
     </>
   );

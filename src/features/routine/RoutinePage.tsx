@@ -203,7 +203,7 @@ function Today() {
   const t = today();
   const yesterday = toDateStr(addDays(now, -1));
   const in3 = toDateStr(addDays(now, 3));
-  const homework = useRows("homework", { due_at: { lte: `${in3} 23:59` } }, "due_at").rows.filter((h) => h.status !== "Submitted" && String(h.due_at).slice(0, 10) >= t);
+  const homework = useRows("homework", { due_at: { lte: `${in3}T23:59` } }, "due_at").rows.filter((h) => h.status !== "Submitted" && String(h.due_at).slice(0, 10) >= t);
   const exams = useRows("exams", { start_at: { gte: t } }, "start_at").rows;
   const soonExams = exams.filter((e) => (daysUntil(e.start_at) ?? 99) <= 30);
   const nextExam = exams[0];
