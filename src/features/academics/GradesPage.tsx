@@ -6,7 +6,7 @@ import { useMutate, useRows } from "../../lib/hooks";
 import { cx } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
 import { DEFAULT_CUTOFFS, fmtPct, GRADES, GRADE_NAMES, gpa, gradeForMark, neededFor, parseScore, standing, TARGETS } from "../../lib/grades";
-import { Button, Card, Empty, Field, IconButton, Input, Modal, Page, PageHeader, Progress } from "../../components/ui";
+import { Button, Card, Empty, Field, IconButton, Input, Modal, Page, PageHeader, Progress, Segmented } from "../../components/ui";
 import { ChoiceField } from "../../components/pickers";
 import { useFormState } from "../../components/form";
 import { toast } from "../../stores/toast";
@@ -269,6 +269,8 @@ export default function GradesPage() {
   const comps = useRows("grading_components").rows;
   const [cut, setCut] = useSetting<Record<string, number>>("grades.cutoffs", DEFAULT_CUTOFFS);
   const [cutOpen, setCutOpen] = useState(false);
+  // Shared with the Modules page: A to Z, or biggest credit units first.
+  const [sort, setSort] = useSetting<"code" | "credits">("modules.sort", "code");
   const form = useFormState();
 
   const estimateFor = (m: Row): string | null => {
@@ -288,6 +290,14 @@ export default function GradesPage() {
         subtitle="Ngee Ann Polytechnic grade points"
         actions={
           <>
+            <Segmented<"code" | "credits">
+              value={sort}
+              onChange={setSort}
+              options={[
+                { value: "code", label: "A to Z" },
+                { value: "credits", label: "Credit units" },
+              ]}
+            />
             <Button icon={SlidersHorizontal} onClick={() => setCutOpen(true)}>
               Cut-offs
             </Button>
@@ -304,7 +314,8 @@ export default function GradesPage() {
           </Empty>
         )}
         {terms.map((term) => {
-          const list = modules.filter((m) => ((m.term as string | null) ?? "") === term);
+          const inTerm = modules.filter((m) => ((m.term as string | null) ?? "") === term);
+          const list = sort === "credits" ? [...inTerm].sort((a, b) => (Number(b.credits) || -1) - (Number(a.credits) || -1) || String(a.code).localeCompare(String(b.code))) : inTerm;
           const stats = [
             ["Semester GPA", gpa(list.map((m) => ({ credits: m.credits, grade: m.final_grade }))).value],
             ["Heading for (est.)", gpa(list.map((m) => ({ credits: m.credits, grade: estimateFor(m) }))).value],
