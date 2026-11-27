@@ -7,6 +7,7 @@ import { addMinutes, fmtDateShort, fmtTime, startOfWeek, toDateStr, today } from
 import { cx } from "../../lib/format";
 import { Button, Card, ConfirmDelete, Input, MilestoneBar, Page, PageHeader, Progress, Segmented } from "../../components/ui";
 import { speciesById } from "../garden/catalog";
+import { Thumb, useThumbs } from "../garden/GardenPage";
 import { Beats, Laurel, useBeats } from "../../components/beats";
 import { useSetting } from "../../stores/ui";
 import {
@@ -223,7 +224,7 @@ function ModuleWeek({ m }: { m: Row }) {
       {goal > 0 ? (
         <>
           <Progress className="mt-2" value={done} max={goal} color={m.color} />
-          <p className="mt-1.5 text-xs text-muted">{done >= goal ? "Target met for this week ✨" : `${hm(goal - done)} to go`}</p>
+          <p className="mt-1.5 text-xs text-muted">{done >= goal ? "Target met for this week" : `${hm(goal - done)} to go`}</p>
         </>
       ) : (
         <p className="mt-1 text-xs text-muted">
@@ -500,6 +501,7 @@ function GardenPanel() {
   const growing = useRows("garden_plants", { grown_at: { null: true } }, "queue, id").rows[0];
   const live = run && run.kind === "academic" && run.moduleId ? Math.floor(focusMs(run, now) / 60_000) : 0;
   const s = growing ? speciesById.get(growing.species) : undefined;
+  const thumbs = useThumbs();
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between">
@@ -510,8 +512,9 @@ function GardenPanel() {
       </div>
       {growing && s ? (
         <>
-          <p className="mt-2 text-sm font-semibold">
-            {s.emoji} {s.name}
+          <p className="mt-2 flex items-center gap-2 text-sm font-semibold">
+            <Thumb src={thumbs[`plant:${growing.species}`]} size={30} className="!rounded-lg" />
+            {s.name}
           </p>
           <MilestoneBar className="mt-2" value={Number(growing.minutes) + live} max={Number(growing.need_minutes)} color="#7cc152" label="Plant growth" />
           <p className="mt-2 text-xs text-muted">

@@ -51,7 +51,7 @@ function scheduleNotice(r: FocusRun | null) {
       const at = new Date(Date.now() + left + 59_000); // round up to the next whole minute
       items.push({
         remindAt: toDateTimeStr(at),
-        title: "Planned focus time reached 🎉",
+        title: "Planned focus time reached",
         body: "The timer keeps counting. Take a break or stop when you're ready.",
       });
     }
@@ -148,7 +148,7 @@ export function useFocusWatcher() {
     if (!r || r.reached || r.runFrom == null) return;
     if (focusMs(r, now) >= r.plannedMin * 60_000) {
       put({ ...r, reached: true });
-      toast.success("Planned time reached 🎉 The timer keeps going until you take a break or stop.");
+      toast.success("Planned time reached. The timer keeps going until you take a break or stop.");
     }
   }, [r, now]);
 }

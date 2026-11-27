@@ -18,6 +18,35 @@ import type { Cell } from "./scene";
 
 const m = (n: number) => fmtMinutes(Math.round(n)) || "0m";
 
+/** Pictures of each plant and decoration, rendered from the 3D models once per session. */
+let thumbCache: Record<string, string> | null = null;
+let thumbJob: Promise<Record<string, string>> | null = null;
+export function useThumbs() {
+  const [t, setT] = useState<Record<string, string>>(thumbCache ?? {});
+  useEffect(() => {
+    if (thumbCache) return;
+    thumbJob ??= import("./scene").then((s) => s.renderThumbs());
+    let alive = true;
+    thumbJob
+      .then((r) => {
+        thumbCache = r;
+        if (alive) setT(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return t;
+}
+export function Thumb({ src, size = 40, className }: { src?: string; size?: number; className?: string }) {
+  return (
+    <span className={cx("inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(180deg,#e3f4ff,#f4f9e8)]", className)} style={{ width: size, height: size }}>
+      {src ? <img src={src} alt="" className="h-full w-full object-contain" draggable={false} /> : <Sprout size={size * 0.4} className="text-[#6aa84f]" />}
+    </span>
+  );
+}
+
 /** The 3D view is loaded only when the garden is opened. */
 function Island({ cols, rows, cells, selected, onPick }: { cols: number; rows: number; cells: Cell[]; selected: number | null; onPick: (p: number | null) => void }) {
   const host = useRef<HTMLDivElement>(null);
@@ -71,6 +100,7 @@ export default function GardenPage() {
   const [selected, setSelected] = useState<number | null>(null);
   const [moving, setMoving] = useState<{ kind: "plant" | "decor"; id: number } | null>(null);
   const [tab, setTab] = useState<"seeds" | "decor">("seeds");
+  const thumbs = useThumbs();
 
   // A focus session on a module counts toward the growing plant live.
   const run = useFocusRun();
@@ -181,8 +211,9 @@ export default function GardenPage() {
             {growingPlant && (
               <div className="pointer-events-none absolute top-3 left-3 rounded-2xl bg-white/75 px-3.5 py-2 text-[#2d3a2a] shadow-lg backdrop-blur">
                 <p className="text-[10px] font-semibold tracking-widest uppercase opacity-60">{live ? "Growing while you focus" : "Growing now"}</p>
-                <p className="text-sm font-semibold">
-                  {speciesById.get(growingPlant.species)?.emoji} {speciesById.get(growingPlant.species)?.name}
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <Thumb src={thumbs[`plant:${growingPlant.species}`]} size={26} className="!rounded-lg" />
+                  {speciesById.get(growingPlant.species)?.name}
                 </p>
                 <p className="text-xs opacity-70">
                   {m(Number(growingPlant.minutes) + live)} of {m(growingPlant.need_minutes)}
@@ -230,7 +261,13 @@ export default function GardenPage() {
                               onClick={() => plant(s.id)}
                               className="flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left hover:bg-surface-2 disabled:opacity-45 disabled:hover:bg-transparent"
                             >
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-xl">{locked ? <Lock size={15} className="text-muted" /> : s.emoji}</span>
+                              {locked ? (
+                                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-surface-2">
+                                  <Lock size={15} className="text-muted" />
+                                </span>
+                              ) : (
+                                <Thumb src={thumbs[`plant:${s.id}`]} size={48} />
+                              )}
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-baseline gap-2">
                                   <span className="font-medium">{s.name}</span>
@@ -252,7 +289,7 @@ export default function GardenPage() {
                             onClick={() => place(d.id)}
                             className="flex flex-col items-start rounded-2xl border border-line px-3 py-2.5 text-left hover:bg-surface-2 disabled:opacity-45"
                           >
-                            <span className="text-xl">{d.emoji}</span>
+                            <Thumb src={thumbs[`decor:${d.id}`]} size={56} className="mb-1" />
                             <span className="text-sm font-medium">{d.name}</span>
                             <Beats n={d.cost} unit={false} className="text-xs" />
                           </button>
@@ -261,12 +298,13 @@ export default function GardenPage() {
                     )}
                   </>
                 )}
-                {sel?.kind === "plant" && <PlantPanel p={sel.row} progress={progressOf(sel.row)} live={growingPlant?.id === sel.row.id ? live : 0} position={queue.findIndex((q) => q.id === sel.row.id)} onGrowNext={growNext} onMove={() => setMoving({ kind: "plant", id: sel.row.id })} />}
+                {sel?.kind === "plant" && <PlantPanel thumb={thumbs[`plant:${sel.row.species}`]} p={sel.row} progress={progressOf(sel.row)} live={growingPlant?.id === sel.row.id ? live : 0} position={queue.findIndex((q) => q.id === sel.row.id)} onGrowNext={growNext} onMove={() => setMoving({ kind: "plant", id: sel.row.id })} />}
                 {sel?.kind === "decor" && (
                   <div>
                     <p className="eyebrow !text-[9.5px]">Decoration</p>
-                    <h2 className="font-display text-xl">
-                      {decorById.get(sel.row.kind)?.emoji} {decorById.get(sel.row.kind)?.name}
+                    <h2 className="font-display flex items-center gap-3 text-xl">
+                      <Thumb src={thumbs[`decor:${sel.row.kind}`]} size={52} />
+                      {decorById.get(sel.row.kind)?.name}
                     </h2>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button size="sm" icon={RotateCw} onClick={() => mutate(db.update("garden_decor", sel.row.id, { rot: (Number(sel.row.rot) + 1) % 4 }))}>
@@ -287,8 +325,9 @@ export default function GardenPage() {
                 <p className="eyebrow !text-[9.5px]">Growing now</p>
                 {growingPlant ? (
                   <>
-                    <h2 className="font-display mt-1 text-xl">
-                      {speciesById.get(growingPlant.species)?.emoji} {speciesById.get(growingPlant.species)?.name}
+                    <h2 className="font-display mt-1 flex items-center gap-3 text-xl">
+                      <Thumb src={thumbs[`plant:${growingPlant.species}`]} size={52} />
+                      {speciesById.get(growingPlant.species)?.name}
                     </h2>
                     <MilestoneBar className="mt-3" value={Number(growingPlant.minutes) + live} max={Number(growingPlant.need_minutes)} color="#7cc152" label="Growth" />
                     <p className="mt-2 text-sm text-muted">
@@ -304,7 +343,7 @@ export default function GardenPage() {
                     {queue.slice(1, 6).map((p, i) => (
                       <button type="button" key={p.id} onClick={() => setSelected(p.plot)} className="flex w-full items-center gap-2 rounded-xl px-1.5 py-1 text-left text-sm hover:bg-surface-2">
                         <span className="w-4 text-xs text-muted">{i + 2}</span>
-                        <span>{speciesById.get(p.species)?.emoji}</span>
+                        <Thumb src={thumbs[`plant:${p.species}`]} size={26} className="!rounded-lg" />
                         <span className="flex-1">{speciesById.get(p.species)?.name}</span>
                         <span className="text-xs text-muted">
                           {m(p.minutes)} / {m(p.need_minutes)}
@@ -331,9 +370,9 @@ export default function GardenPage() {
                     <span
                       key={s.id}
                       title={`${s.name}: ${n ? `${n} grown` : grown.length < s.unlock ? `unlocks after ${s.unlock} plants` : "not grown yet"}`}
-                      className={cx("relative flex aspect-square items-center justify-center rounded-xl text-lg", n ? "bg-accent-soft" : "bg-surface-2 opacity-40 grayscale")}
+                      className={cx("relative flex aspect-square items-center justify-center rounded-xl", n ? "" : "opacity-35 grayscale")}
                     >
-                      {s.emoji}
+                      <Thumb src={thumbs[`plant:${s.id}`]} size={44} className="!h-full !w-full" />
                       {n > 1 && <span className="absolute -right-1 -bottom-1 rounded-full bg-accent px-1 text-[9px] font-semibold text-accent-fg">{n}</span>}
                     </span>
                   );
@@ -365,15 +404,16 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PlantPanel({ p, progress, live, position, onGrowNext, onMove }: { p: Row; progress: number; live: number; position: number; onGrowNext: (p: Row) => void; onMove: () => void }) {
+function PlantPanel({ p, thumb, progress, live, position, onGrowNext, onMove }: { p: Row; thumb?: string; progress: number; live: number; position: number; onGrowNext: (p: Row) => void; onMove: () => void }) {
   const mutate = useMutate();
   const s = speciesById.get(p.species);
   const done = Number(p.minutes) + live;
   return (
     <div>
       <p className="eyebrow !text-[9.5px]">{p.grown_at ? `In bloom since ${fmtDate(String(p.grown_at).slice(0, 10))}` : position === 0 ? "Growing now" : `Waiting · number ${position + 1} in line`}</p>
-      <h2 className="font-display mt-1 text-xl">
-        {s?.emoji} {s?.name}
+      <h2 className="font-display mt-1 flex items-center gap-3 text-xl">
+        <Thumb src={thumb} size={52} />
+        {s?.name}
       </h2>
       <p className="text-sm text-muted">{STAGE_NAMES[stageOf(progress)]}</p>
       <MilestoneBar className="mt-3" value={done} max={Number(p.need_minutes)} color="#7cc152" label="Growth" />

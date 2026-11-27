@@ -245,7 +245,7 @@ function NoteEditor({ note, onDeleted }: { note: Row; onDeleted: () => void }) {
         minHeight={420}
         subdir="notes"
         onSelectionAction={(s) => setExcerpt(s)}
-        selectionActionLabel="⚡ Flashcard from selection"
+        selectionActionLabel="Flashcard from selection"
       />
       <div className="mt-5 grid grid-cols-2 gap-4">
         <Field label="Linked exams">

@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
-import { Cake, CalendarRange, ClipboardList, Clock, Flame, GraduationCap, ListTodo, MapPin, PartyPopper, Plus, Receipt, Repeat2, School, Sun, Target, Wallet } from "lucide-react";
+import { Cake, CalendarRange, Check, ClipboardList, Clock, Flame, GraduationCap, ListTodo, MapPin, PartyPopper, Plus, Receipt, Repeat2, School, Sun, Target, Wallet } from "lucide-react";
 import { api, db, type Row } from "../../lib/api";
 import { useMutate, useNow, useRows } from "../../lib/hooks";
 import { addDays, fmtTime, parse, startOfWeek, toDateStr } from "../../lib/dates";
@@ -318,7 +318,7 @@ export default function HomePage() {
                     className={cx("rounded-full px-3 py-1.5 text-xs", on ? "font-semibold" : "bg-surface-2 hover:bg-accent-soft")}
                     style={on ? { background: h.color, color: "#3a2330" } : undefined}
                   >
-                    {on ? "✓ " : ""}
+                    {on && <Check size={12} strokeWidth={3} className="mr-1 inline align-[-1px]" />}
                     {h.name}
                   </button>
                 );

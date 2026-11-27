@@ -5,28 +5,39 @@ import * as THREE from "three";
 import { stageOf } from "./catalog";
 
 /* ------------------------------------------------------------ Shared pieces */
-const mats = new Map<string, THREE.MeshStandardMaterial>();
+/** Soft cartoon shading: four gentle steps of light instead of a smooth gradient. */
+export const TOON_RAMP = (() => {
+  const steps = [118, 176, 224, 255];
+  const data = new Uint8Array(steps.length * 4);
+  steps.forEach((v, i) => data.set([v, v, v, 255], i * 4));
+  const t = new THREE.DataTexture(data, steps.length, 1, THREE.RGBAFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+})();
+const mats = new Map<string, THREE.Material>();
 export function mat(color: string, opts: { rough?: number; emissive?: string; ei?: number; opacity?: number } = {}) {
   const key = `${color}|${opts.rough ?? 0.85}|${opts.emissive ?? ""}|${opts.ei ?? 0}|${opts.opacity ?? 1}`;
   let m = mats.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({
+    const common = {
       color,
-      roughness: opts.rough ?? 0.85,
-      metalness: 0,
       emissive: opts.emissive ? new THREE.Color(opts.emissive) : new THREE.Color(0),
       emissiveIntensity: opts.ei ?? 0,
       transparent: (opts.opacity ?? 1) < 1,
       opacity: opts.opacity ?? 1,
-    });
+    };
+    // Shiny things (water) keep real highlights; everything else is soft-toon.
+    m = (opts.rough ?? 0.85) < 0.4 ? new THREE.MeshStandardMaterial({ ...common, roughness: opts.rough, metalness: 0 }) : new THREE.MeshToonMaterial({ ...common, gradientMap: TOON_RAMP });
     mats.set(key, m);
   }
   return m;
 }
-const SPHERE = new THREE.SphereGeometry(1, 20, 14);
-const LOWSPHERE = new THREE.SphereGeometry(1, 12, 8);
-const CYL = new THREE.CylinderGeometry(1, 1, 1, 14, 1);
-const CONE = new THREE.ConeGeometry(1, 1, 16, 1);
+const SPHERE = new THREE.SphereGeometry(1, 32, 22);
+const LOWSPHERE = new THREE.SphereGeometry(1, 14, 10);
+const CYL = new THREE.CylinderGeometry(1, 1, 1, 20, 1);
+const CONE = new THREE.ConeGeometry(1, 1, 22, 1);
 const TORUS = new THREE.TorusGeometry(1, 0.18, 8, 24);
 const ROCK = new THREE.DodecahedronGeometry(1, 0);
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -98,7 +109,7 @@ function leaf(len: number, width: number, color = LEAF) {
 }
 
 /* ------------------------------------------------------------ Early stages */
-function seedling(g: number, r: () => number) {
+export function seedling(g: number, r: () => number) {
   const grp = new THREE.Group();
   grp.add(at(ell(0.16, 0.06, 0.16, SOIL), 0, 0, 0));
   if (g < 0.06) {
@@ -716,6 +727,6 @@ export function disposeObject(o: THREE.Object3D) {
   const shared = new Set<THREE.BufferGeometry>([SPHERE, LOWSPHERE, CYL, CONE, TORUS, ROCK, BOX]);
   o.traverse((c) => {
     const m = c as THREE.Mesh;
-    if (m.geometry && !shared.has(m.geometry)) m.geometry.dispose();
+    if (m.geometry && !shared.has(m.geometry) && !m.geometry.userData?.shared) m.geometry.dispose();
   });
 }

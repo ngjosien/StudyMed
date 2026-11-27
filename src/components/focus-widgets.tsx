@@ -139,7 +139,7 @@ function Finish({ run }: { run: FocusRun }) {
     <Modal
       open
       onClose={unstopFocus}
-      title={extra >= 0 ? "Session complete 🎉" : "Nice work"}
+      title={extra >= 0 ? "Session complete" : "Nice work"}
       width="max-w-md"
       footer={
         <>

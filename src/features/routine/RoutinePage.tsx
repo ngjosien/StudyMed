@@ -527,7 +527,7 @@ function Study() {
                   <div className="mt-2 flex items-center gap-3 text-[11px] text-muted">
                     <MilestoneBar className="flex-1" value={done} max={goal} color={m.color} label={`${m.code} this week`} />
                     <span className="shrink-0">
-                      {fmtMinutes(done) || "0m"} done{done >= goal ? " ✓" : `, ${fmtMinutes(goal - done)} to go`}
+                      {fmtMinutes(done) || "0m"} done{done >= goal ? ", target met" : `, ${fmtMinutes(goal - done)} to go`}
                     </span>
                   </div>
                 )}

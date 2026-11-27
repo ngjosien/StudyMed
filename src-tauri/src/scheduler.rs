@@ -169,7 +169,7 @@ pub fn ensure_recurring(conn: &Connection) -> AppResult<()> {
                 .find(|(_, at)| *at > now_s)
                 .map(|(date, at)| {
                     let when = if days == 0 { "today".to_string() } else { format!("on {}", date.format("%a %d %b")) };
-                    (at, format!("🎂 {name}'s birthday"), format!("{name}'s birthday is {when}"))
+                    (at, format!("{name}'s birthday"), format!("{name}'s birthday is {when}"))
                 }),
             _ => None,
         };

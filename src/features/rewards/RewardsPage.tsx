@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Gift, ListTodo, Pencil, Plus, Timer, Undo2 } from "lucide-react";
+import { BookOpen, Cake, Clapperboard, Coffee, CupSoda, Flower2, Gamepad2, Gift, Headphones, IceCreamCone, ListTodo, Moon, Pencil, Plus, ShoppingBag, Soup, Sparkles, Timer, Trophy, Tv, Undo2, type LucideIcon } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { fmtDateShort, fmtTime } from "../../lib/dates";
@@ -10,14 +10,60 @@ import { Button, Card, ConfirmDelete, Field, IconButton, Input, Modal, Page, Pag
 import { Beats, Laurel, useBeats } from "../../components/beats";
 import { BEATS_PER_TODO } from "../../lib/focus";
 
-const EMOJIS = ["🧋", "🍰", "🎮", "📺", "😴", "🛍️", "🍜", "🎬", "🏸", "📚", "💅", "☕", "🍦", "🎧", "🌸", "🎁"];
+/** Treat icons. The `emoji` column now stores one of these names. */
+const ICONS: Record<string, LucideIcon> = {
+  drink: CupSoda,
+  cake: Cake,
+  games: Gamepad2,
+  tv: Tv,
+  sleep: Moon,
+  shopping: ShoppingBag,
+  noodles: Soup,
+  film: Clapperboard,
+  sport: Trophy,
+  book: BookOpen,
+  pamper: Sparkles,
+  coffee: Coffee,
+  icecream: IceCreamCone,
+  music: Headphones,
+  flower: Flower2,
+  gift: Gift,
+};
+/** Treats saved before icons replaced emoji. */
+const FROM_EMOJI: Record<string, string> = {
+  "\u{1F9CB}": "drink",
+  "\u{1F370}": "cake",
+  "\u{1F3AE}": "games",
+  "\u{1F4FA}": "tv",
+  "\u{1F634}": "sleep",
+  "\u{1F6CD}\u{FE0F}": "shopping",
+  "\u{1F6CD}": "shopping",
+  "\u{1F35C}": "noodles",
+  "\u{1F3AC}": "film",
+  "\u{1F3F8}": "sport",
+  "\u{1F4DA}": "book",
+  "\u{1F485}": "pamper",
+  "\u{2615}": "coffee",
+  "\u{1F366}": "icecream",
+  "\u{1F3A7}": "music",
+  "\u{1F338}": "flower",
+  "\u{1F381}": "gift",
+};
+const iconKey = (v: unknown) => {
+  const s = String(v ?? "");
+  return ICONS[s] ? s : (FROM_EMOJI[s] ?? "gift");
+};
+function TreatIcon({ name, size = 22 }: { name: unknown; size?: number }) {
+  const Icon = ICONS[iconKey(name)];
+  return <Icon size={size} strokeWidth={1.6} />;
+}
 const STARTERS = [
-  { emoji: "📺", name: "One episode of a show", cost: 60 },
-  { emoji: "🎮", name: "An hour of games", cost: 90 },
-  { emoji: "🍰", name: "Dessert", cost: 100 },
-  { emoji: "🧋", name: "Bubble tea", cost: 120 },
-  { emoji: "😴", name: "Sleep in", cost: 150 },
-  { emoji: "🛍️", name: "Small shopping treat", cost: 400 },
+  { emoji: "tv", name: "One episode of a show", cost: 60 },
+  { emoji: "games", name: "An hour of games", cost: 90 },
+  { emoji: "cake", name: "Dessert", cost: 100 },
+  { emoji: "drink", name: "Bubble tea", cost: 120 },
+  { emoji: "sleep", name: "Sleep in", cost: 150 },
+  { emoji: "shopping", name: "Small shopping treat", cost: 400 },
 ];
 
 export default function RewardsPage() {
@@ -29,7 +75,7 @@ export default function RewardsPage() {
 
   const redeem = async (r: Row) => {
     await mutate(db.insert("beats", { amount: -r.cost, reason: `Treat · ${r.name}`, source_type: "rewards", source_id: r.id }));
-    toast.success(`Enjoy your ${r.name.toLowerCase()} ${r.emoji ?? "🎁"}`);
+    toast.success(`Enjoy your ${r.name.toLowerCase()}`);
   };
 
   return (
@@ -103,7 +149,9 @@ export default function RewardsPage() {
                 return (
                   <Card key={r.id} className={cx("group relative flex flex-col p-5", can && "ring-1 ring-[color-mix(in_srgb,var(--beat)_40%,transparent)]")}>
                     <IconButton icon={Pencil} label="Edit treat" onClick={() => setEdit(r)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100" />
-                    <div className="text-4xl">{r.emoji || "🎁"}</div>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                      <TreatIcon name={r.emoji} size={24} />
+                    </div>
                     <div className="mt-2 font-medium">{r.name}</div>
                     <Beats n={r.cost} className="mt-0.5 text-sm" />
                     <div className="mt-auto pt-4">
@@ -170,7 +218,7 @@ function Mini({ label, n }: { label: string; n: number }) {
 
 function TreatModal({ row, onClose }: { row: Row | null; onClose: () => void }) {
   const mutate = useMutate();
-  const [emoji, setEmoji] = useState<string>(row?.emoji ?? "🎁");
+  const [emoji, setEmoji] = useState<string>(iconKey(row?.emoji));
   const [name, setName] = useState<string>(row?.name ?? "");
   const [cost, setCost] = useState<string>(String(row?.cost ?? 60));
   const c = Math.round(Number(cost) || 0);
@@ -207,9 +255,16 @@ function TreatModal({ row, onClose }: { row: Row | null; onClose: () => void }) 
       <div className="space-y-4 pb-2">
         <Field label="Icon">
           <div className="flex flex-wrap gap-1">
-            {EMOJIS.map((e) => (
-              <button key={e} type="button" onClick={() => setEmoji(e)} className={cx("h-9 w-9 rounded-xl text-xl hover:bg-surface-2", emoji === e && "bg-accent-soft ring-1 ring-accent")}>
-                {e}
+            {Object.keys(ICONS).map((e) => (
+              <button
+                key={e}
+                type="button"
+                title={e}
+                aria-label={e}
+                onClick={() => setEmoji(e)}
+                className={cx("flex h-9 w-9 items-center justify-center rounded-xl hover:bg-surface-2", emoji === e ? "bg-accent-soft text-accent ring-1 ring-accent" : "text-muted")}
+              >
+                <TreatIcon name={e} size={18} />
               </button>
             ))}
           </div>

@@ -244,7 +244,7 @@ export default function HabitsPage() {
                             <button
                               type="button"
                               key={k}
-                              title={`${k}${on ? " ✓" : ""}`}
+                              title={`${k}${on ? " (done)" : ""}`}
                               disabled={k > t}
                               onClick={() => toggle(h, k, !on)}
                               className={cx("h-[18px] w-[18px] rounded-[4px] disabled:opacity-30", !on && "bg-surface-2 hover:bg-line", isWeekStart && "ml-1")}
