@@ -494,11 +494,14 @@ function History() {
   );
 }
 
-/** The plant your study time is growing, from the Garden. */
+/** The flower your study time is growing, from the Garden. */
 function GardenPanel() {
   const run = useFocusRun();
   const now = useTick(!!run && run.endedAt == null && run.kind === "academic");
-  const growing = useRows("garden_plants", { grown_at: { null: true } }, "queue, id").rows[0];
+  const queue = useRows("garden_plants", { grown_at: { null: true } }, "queue, id").rows;
+  // A flower for the module you're focusing on grows first; otherwise one for any study.
+  const mod = run?.kind === "academic" ? run.moduleId : null;
+  const growing = (mod != null ? queue.find((p) => p.module_id === mod) : undefined) ?? queue.find((p) => p.module_id == null);
   const live = run && run.kind === "academic" && run.moduleId ? Math.floor(focusMs(run, now) / 60_000) : 0;
   const s = growing ? speciesById.get(growing.species) : undefined;
   const thumbs = useThumbs();
@@ -516,7 +519,7 @@ function GardenPanel() {
             <Thumb src={thumbs[`plant:${growing.species}`]} size={30} className="!rounded-lg" />
             {s.name}
           </p>
-          <MilestoneBar className="mt-2" value={Number(growing.minutes) + live} max={Number(growing.need_minutes)} color="#7cc152" label="Plant growth" />
+          <MilestoneBar className="mt-2" value={Number(growing.minutes) + live} max={Number(growing.need_minutes)} color="#7cc152" label="Flower growth" />
           <p className="mt-2 text-xs text-muted">
             {hm(Math.max(0, Number(growing.need_minutes) - Number(growing.minutes) - live))} more study to bloom
             {run?.kind === "other" ? " · non-academic time doesn't grow it" : ""}
@@ -524,7 +527,7 @@ function GardenPanel() {
         </>
       ) : (
         <p className="mt-2 text-sm text-muted">
-          Plant a seed in the <Link to="/garden" className="text-accent underline">Garden</Link> and your study time will grow it.
+          Plant a flower in the <Link to="/garden" className="text-accent underline">Garden</Link> and your study time will grow it.
         </p>
       )}
     </Card>

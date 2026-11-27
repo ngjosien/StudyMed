@@ -17,6 +17,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0007_focus_beats.sql"),
     include_str!("../migrations/0008_plans_hours_gibbs.sql"),
     include_str!("../migrations/0009_topics_garden.sql"),
+    include_str!("../migrations/0010_flower_lands.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -184,6 +185,88 @@ mod tests {
         conn.execute_batch("DELETE FROM modules WHERE id = 1;").unwrap();
         let left: i64 = conn.query_row("SELECT count(*) FROM module_topics", [], |r| r.get(0)).unwrap();
         assert_eq!(left, 0);
+    }
+
+    #[test]
+    fn flower_credits_record_days_and_spill_down_the_line() {
+        let conn = test_conn();
+        let q = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO garden_plants(id, species, land, plot, need_minutes, queue) VALUES
+               (1, 'daisy', '2026-11', 0, 60, 0), (2, 'tulip', '2026-11', 1, 30, 1), (3, 'rose', '2026-11', 2, 300, 2);
+             INSERT INTO study_logs(id, module_id, date, minutes) VALUES (1, 1, '2026-11-26', 40);
+             INSERT INTO study_logs(id, module_id, date, minutes) VALUES (2, 1, '2026-11-27', 120);",
+        )
+        .unwrap();
+        // 120 minutes: 20 finish the daisy, 30 grow the whole tulip, 70 go to the rose.
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 1"), 60);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 2"), 30);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 3"), 70);
+        assert_eq!(q("SELECT count(*) FROM garden_plants WHERE grown_at IS NOT NULL"), 2);
+        assert_eq!(q("SELECT count(DISTINCT date) FROM garden_credits WHERE plant_id = 1"), 2);
+        assert_eq!(q("SELECT count(DISTINCT date) FROM garden_credits WHERE plant_id = 2"), 1);
+        // Deleting the big log takes back exactly what each flower got from it.
+        conn.execute_batch("DELETE FROM study_logs WHERE id = 2;").unwrap();
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 1"), 40);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 2"), 0);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 3"), 0);
+        assert_eq!(q("SELECT count(*) FROM garden_plants WHERE grown_at IS NOT NULL"), 0);
+        assert_eq!(q("SELECT count(*) FROM garden_credits"), 1);
+        // Digging up a flower clears its credits.
+        conn.execute_batch("DELETE FROM garden_plants WHERE id = 1;").unwrap();
+        assert_eq!(q("SELECT count(*) FROM garden_credits"), 0);
+    }
+
+    #[test]
+    fn module_flowers_grow_only_from_their_module() {
+        let conn = test_conn();
+        let q = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences'), (2, 'INP', 'Intro to Practice');
+             INSERT INTO garden_plants(id, species, land, plot, need_minutes, queue, module_id) VALUES
+               (1, 'daisy', '2026-11', 0, 60, 0, NULL), (2, 'tulip', '2026-11', 1, 90, 1, 1), (3, 'rose', '2026-11', 2, 300, 2, 2);
+             INSERT INTO study_logs(id, module_id, date, minutes) VALUES (1, 1, '2026-11-26', 100);",
+        )
+        .unwrap();
+        // HBS study fills the HBS tulip first, then the any-study daisy; the INP rose waits.
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 2"), 90);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 1"), 10);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 3"), 0);
+        conn.execute_batch("INSERT INTO study_logs(id, module_id, date, minutes) VALUES (2, 2, '2026-11-26', 30);").unwrap();
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 3"), 30);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 1"), 10);
+        // Deleting a module lets its flowers grow from any study.
+        conn.execute_batch("DELETE FROM modules WHERE id = 2;").unwrap();
+        assert_eq!(q("SELECT count(*) FROM garden_plants WHERE module_id IS NULL"), 2);
+    }
+
+    #[test]
+    fn old_gardens_become_flower_lands() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for sql in &MIGRATIONS[..9] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 9).unwrap();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO garden_plants(id, species, plot, need_minutes, queue, planted_at) VALUES
+               (1, 'cherry', 14, 900, 0, '2026-11-20 10:00'), (2, 'daisy', 3, 90, 1, '2026-11-21 10:00');
+             INSERT INTO garden_decor(id, kind, plot, created_at) VALUES (1, 'bench', 9, '2026-11-22 10:00');
+             INSERT INTO study_logs(id, module_id, date, minutes) VALUES (1, 1, '2026-11-26', 50);",
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        let s = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, String>(0)).unwrap();
+        let n = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(s("SELECT species || ':' || plot || ':' || land FROM garden_plants WHERE id = 1"), "bells:1:2026-11");
+        assert_eq!(s("SELECT species || ':' || plot FROM garden_plants WHERE id = 2"), "cosmos:0");
+        assert_eq!(s("SELECT plot || ':' || land FROM garden_decor"), "41:2026-11");
+        // Minutes from before the upgrade are still taken back when their log is deleted.
+        assert_eq!(n("SELECT minutes FROM garden_plants WHERE id = 1"), 50);
+        conn.execute_batch("DELETE FROM study_logs WHERE id = 1;").unwrap();
+        assert_eq!(n("SELECT minutes FROM garden_plants WHERE id = 1"), 0);
     }
 
     #[test]

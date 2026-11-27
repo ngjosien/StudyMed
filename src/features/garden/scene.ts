@@ -1,14 +1,17 @@
-// The garden island in 3D, in an original cozy style: a raised grassy terrace at the
-// back with a little waterfall, a stream with sandy banks and a wooden bridge, a
-// beach on calm water, round trees, bushes, wild flowers and rocks, soft sunlight
-// and drifting clouds. Plants sway; the one growing right now sparkles; cherry
-// trees in bloom drop petals. Drag to turn, scroll to zoom, click a plot to pick it.
+// A month's garden land in 3D, in an original cozy style: a raised grassy terrace
+// at the back with a little waterfall, a stream with sandy banks and a wooden
+// bridge, a beach on calm water, puffy round trees, bushes, wild flowers and rocks,
+// soft sunlight and drifting clouds. One soil bed per day of the month, with grass
+// at the front for decorations. Flowers sway; the one growing right now sparkles;
+// bloomed flowers with laurels to collect have a golden token bobbing over them.
+// Drag to turn, scroll to zoom, click a bed to pick it.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { disposeObject, ell, mat, rng, TOON_RAMP } from "./models";
-import { bushBall, buildGardenDecor, buildPlant, edgeTree, rock, tuft, wildflowers } from "./cozy";
-import { DECOR, SPECIES } from "./catalog";
+import { bushBall, buildGardenDecor, edgeTree, rock, tuft, wildflowers, type TreeKind } from "./cozy";
+import { buildFlower } from "./flowers";
+import { DECOR, LAND_COLS, LAND_ROWS, SPECIES } from "./catalog";
 
 export interface Cell {
   key: string; // changes whenever the model must be rebuilt
@@ -17,9 +20,11 @@ export interface Cell {
   species?: string;
   decor?: string;
   g?: number;
+  tier?: number;
   rot?: number;
   seed: number;
   growing?: boolean;
+  claim?: boolean; // bloomed, with laurels waiting
 }
 
 const T = 1; // plot size
@@ -129,8 +134,10 @@ export class GardenScene {
   private raf = 0;
   private clock = new THREE.Clock();
   private ro: ResizeObserver;
-  private cols = 6;
-  private rows = 4;
+  private cols = LAND_COLS;
+  private rows = LAND_ROWS;
+  private beds = 30;
+  private tokens = new Map<number, THREE.Group>();
   private selected: number | null = null;
   private hovered: number | null = null;
   private down: { x: number; y: number } | null = null;
@@ -230,12 +237,11 @@ export class GardenScene {
   }
 
   /* ------------------------------------------------------------ Layout */
-  setSize(cols: number, rows: number) {
-    if (cols === this.cols && rows === this.rows) return;
-    this.cols = cols;
-    this.rows = rows;
+  /** How many of the land's cells are flower beds (one per day of the month). */
+  setBeds(beds: number) {
+    if (beds === this.beds) return;
+    this.beds = beds;
     this.buildIsland();
-    for (const [plot, o] of this.objects) o.obj.position.copy(this.plotPos(plot));
   }
 
   private plotPos(plot: number) {
@@ -371,14 +377,25 @@ export class GardenScene {
     bridge.position.set(sx, 0.02, 0.2);
     this.island.add(bridge);
 
-    // Plots: soft raised squares of slightly brighter lawn.
-    const plotGeo = new RoundedBoxGeometry(T * 0.9, 0.05, T * 0.9, 4, 0.025);
-    const plotMat = toon({ map: this.grassTex, color: "#ecffd8" });
+    // Flower beds: soft mounds of dark soil with a rounded edge; the rest is lawn.
+    const bedGeo = new RoundedBoxGeometry(T * 0.86, 0.07, T * 0.86, 4, 0.035);
+    const rimGeo = new RoundedBoxGeometry(T * 0.92, 0.05, T * 0.92, 4, 0.025);
+    const bedMat = toon({ color: "#8a5a3c" });
+    const rimMat = toon({ color: "#a9764f" });
+    const lawnGeo = new RoundedBoxGeometry(T * 0.9, 0.04, T * 0.9, 4, 0.02);
+    const lawnMat = toon({ map: this.grassTex, color: "#f2ffe4" });
     const pickGeo = new THREE.PlaneGeometry(T, T);
     for (let i = 0; i < this.cols * this.rows; i++) {
       const p = this.plotPos(i);
-      const tile = new THREE.Mesh(plotGeo, plotMat);
-      tile.position.set(p.x, 0.065, p.z);
+      const bed = i < this.beds;
+      if (bed) {
+        const rim = new THREE.Mesh(rimGeo, rimMat);
+        rim.position.set(p.x, 0.06, p.z);
+        rim.receiveShadow = true;
+        this.plotsGroup.add(rim);
+      }
+      const tile = new THREE.Mesh(bed ? bedGeo : lawnGeo, bed ? bedMat : lawnMat);
+      tile.position.set(p.x, bed ? 0.075 : 0.06, p.z);
       tile.receiveShadow = true;
       this.plotsGroup.add(tile);
       const pick = new THREE.Mesh(pickGeo, new THREE.MeshBasicMaterial({ visible: false }));
@@ -390,7 +407,7 @@ export class GardenScene {
     }
 
     // Trees and bushes along the terrace.
-    const kinds: ("round" | "cedar" | "fruit")[] = ["round", "cedar", "round", "fruit", "cedar"];
+    const kinds: TreeKind[] = ["round", "round", "fruit", "round", "blossom", "round", "autumn"];
     for (let x = -W / 2 + 0.55; x <= W / 2 - 0.4; x += 0.85 + r() * 0.35) {
       if (Math.abs(x - sx) < 0.5) continue;
       if (r() < 0.25) add(bushBall(r, 0.2 + r() * 0.08, r() < 0.5), x, topY, tz - tD * 0.15 + (r() - 0.5) * 0.4, true);
@@ -415,9 +432,11 @@ export class GardenScene {
       else if (roll < 0.88) add(rock(r, 0.05 + r() * 0.05), x, 0.08, z);
       else add(bushBall(r, 0.14 + r() * 0.06, r() < 0.5), x, 0.08, z, true);
     }
-    // A couple of round trees on the front-right corner frame the view.
+    // Round trees down the right-hand side and on the front corners frame the view.
+    for (let z = -halfD + 0.3; z < halfD - 0.6; z += 1.5 + r() * 0.6) add(edgeTree(r, kinds[Math.floor(r() * kinds.length)], 1.15 + r() * 0.35), W / 2 - 0.5, 0.08, z, true);
     add(edgeTree(r, "fruit", 1.3), W / 2 - 0.45, 0.08, front - 0.45, true);
     add(bushBall(r, 0.22, true), W / 2 - 0.95, 0.08, front - 0.35, true);
+    add(edgeTree(r, "round", 1.2), -halfW - 0.1, 0.08, front - 0.4, true);
     // Rocks where the grass meets the beach, and lily pads on the sea.
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * Math.PI * 2 + r() * 0.3;
@@ -438,6 +457,8 @@ export class GardenScene {
     const span = Math.max(this.cols, this.rows * 1.4);
     this.controls.maxDistance = 12 + span * 2.2;
     this.controls.minDistance = 4;
+    const dir = new THREE.Vector3(5.4, 7.2, 8.4).normalize();
+    this.camera.position.copy(this.controls.target).addScaledVector(dir, 6 + span * 1.45);
   }
 
   /* ------------------------------------------------------------ Contents */
@@ -451,7 +472,7 @@ export class GardenScene {
         continue;
       }
       if (cur) this.remove(cell.plot);
-      const obj = cell.kind === "plant" ? buildPlant(cell.species!, cell.g ?? 0, cell.seed) : buildGardenDecor(cell.decor!, cell.seed);
+      const obj = cell.kind === "plant" ? buildFlower(cell.species!, cell.g ?? 0, cell.tier ?? 2, cell.seed) : buildGardenDecor(cell.decor!, cell.seed);
       obj.position.copy(this.plotPos(cell.plot));
       obj.rotation.y = ((cell.rot ?? 0) * Math.PI) / 2 + (cell.kind === "plant" ? (cell.seed % 7) * 0.4 : 0);
       obj.userData.seed = cell.seed;
@@ -461,6 +482,22 @@ export class GardenScene {
       obj.userData.pop = 0;
     }
     for (const plot of [...this.objects.keys()]) if (!seen.has(plot)) this.remove(plot);
+    // Golden tokens over bloomed flowers with laurels to collect.
+    const claims = new Set(cells.filter((c) => c.claim).map((c) => c.plot));
+    for (const [plot, t] of this.tokens)
+      if (!claims.has(plot)) {
+        this.scene.remove(t);
+        this.tokens.delete(plot);
+      }
+    for (const plot of claims)
+      if (!this.tokens.has(plot)) {
+        const t = token();
+        const p = this.plotPos(plot);
+        t.position.set(p.x, 0.95, p.z);
+        t.userData.phase = plot * 0.7;
+        this.scene.add(t);
+        this.tokens.set(plot, t);
+      }
   }
 
   private remove(plot: number) {
@@ -539,8 +576,13 @@ export class GardenScene {
         obj.rotation.z = Math.sin(t * 1.3 + s) * amp;
         obj.rotation.x = Math.cos(t * 1.05 + s * 0.7) * amp * 0.7;
         if (cell.growing) growing = obj;
-        if (obj.userData.petals) blooming.push(obj);
       }
+      if (obj.userData.petals) blooming.push(obj);
+    }
+    for (const tk of this.tokens.values()) {
+      const ph = tk.userData.phase as number;
+      tk.position.y = 0.92 + Math.sin(t * 2 + ph) * 0.06;
+      tk.rotation.y = t * 1.4 + ph;
     }
     for (const o of this.sways) o.rotation.z = Math.sin(t * 1.2 + (o.userData.seed as number)) * 0.018;
     for (const c of this.clouds) {
@@ -605,6 +647,8 @@ export class GardenScene {
     el.removeEventListener("pointermove", this.onMove);
     el.removeEventListener("pointerleave", this.onLeave);
     for (const plot of [...this.objects.keys()]) this.remove(plot);
+    for (const t of this.tokens.values()) this.scene.remove(t);
+    this.tokens.clear();
     this.controls.dispose();
     this.renderer.dispose();
     el.remove();
@@ -612,7 +656,7 @@ export class GardenScene {
 }
 
 /** Small pictures of every plant (in bloom) and decoration, for the lists beside the garden. */
-export async function renderThumbs(size = 112): Promise<Record<string, string>> {
+export async function renderThumbs(size = 168): Promise<Record<string, string>> {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
   renderer.setSize(size, size, false);
@@ -640,11 +684,37 @@ export async function renderThumbs(size = 112): Promise<Record<string, string>> 
     scene.remove(obj);
     disposeObject(obj);
   };
-  for (const s of SPECIES) shoot(`plant:${s.id}`, buildPlant(s.id, 1, 13));
+  for (const s of SPECIES) {
+    for (let tier = 0; tier < 5; tier++) shoot(`flower:${s.id}:${tier}`, buildFlower(s.id, 1, tier, 13));
+    out[`plant:${s.id}`] = out[`flower:${s.id}:2`];
+  }
   for (const d of DECOR) shoot(`decor:${d.id}`, buildGardenDecor(d.id, 5));
   renderer.dispose();
   renderer.forceContextLoss();
   return out;
+}
+
+/** A small golden token: laurels waiting to be collected. */
+const TOKEN_MAT = new THREE.MeshToonMaterial({ color: "#ffd24a", emissive: new THREE.Color("#ffb300"), emissiveIntensity: 0.35, gradientMap: TOON_RAMP });
+const TOKEN_RIM = new THREE.MeshToonMaterial({ color: "#f2a91c", emissive: new THREE.Color("#c77700"), emissiveIntensity: 0.2, gradientMap: TOON_RAMP });
+const TOKEN_GEO = new THREE.CylinderGeometry(0.11, 0.11, 0.035, 28).rotateX(Math.PI / 2);
+const TOKEN_RIM_GEO = new THREE.TorusGeometry(0.11, 0.018, 8, 28);
+const TOKEN_LEAF = new THREE.SphereGeometry(1, 10, 8);
+function token() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(TOKEN_GEO, TOKEN_MAT));
+  g.add(new THREE.Mesh(TOKEN_RIM_GEO, TOKEN_RIM));
+  // A tiny wreath of leaves pressed into each face.
+  for (const zf of [-1, 1])
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI * 0.62 + (i / 7) * Math.PI * 1.76;
+      const l = new THREE.Mesh(TOKEN_LEAF, TOKEN_RIM);
+      l.scale.set(0.012, 0.024, 0.008);
+      l.position.set(Math.cos(a) * 0.065, Math.sin(a) * 0.065, zf * 0.019);
+      l.rotation.z = a;
+      g.add(l);
+    }
+  return g;
 }
 
 /** A flat rounded-square outline, used to mark the hovered and picked plots. */
