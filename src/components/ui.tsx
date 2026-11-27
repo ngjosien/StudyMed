@@ -368,19 +368,19 @@ export function PageHeader({
   const { pathname } = useLocation();
   const section = pathname.startsWith("/life") ? "Personal" : pathname.startsWith("/academics") ? "Academics" : "StudyMed";
   return (
-    <header className="px-8 pt-8 pb-4">
-      <div className="flex items-end gap-4">
+    <header className="px-4 pt-4 pb-3 md:px-8 md:pt-8 md:pb-4">
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
         {Icon && (
-          <div className="mb-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-accent/40 text-accent shadow-[inset_0_1px_0_var(--glass-highlight)]">
+          <div className="mb-1 hidden h-11 w-11 shrink-0 md:flex items-center justify-center rounded-full border border-accent/40 text-accent shadow-[inset_0_1px_0_var(--glass-highlight)]">
             <Icon size={19} strokeWidth={1.75} />
           </div>
         )}
         <div className="min-w-0 flex-1">
           <p className="eyebrow">{section}</p>
-          <h1 className="truncate text-[25px] leading-tight tracking-tight">{title}</h1>
-          {subtitle && <p className="truncate text-sm text-muted">{subtitle}</p>}
+          <h1 className="truncate text-[22px] leading-tight tracking-tight md:text-[25px]">{title}</h1>
+          {subtitle && <p className="text-sm text-muted md:truncate">{subtitle}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
       </div>
       <div className="rule-fine mt-4" />
       {children && <div className="mt-4">{children}</div>}
@@ -389,7 +389,7 @@ export function PageHeader({
 }
 
 export function Page({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("px-8 py-4", className)}>{children}</div>;
+  return <div className={cx("px-4 py-3 md:px-8 md:py-4", className)}>{children}</div>;
 }
 
 export function Card({ children, className, onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {

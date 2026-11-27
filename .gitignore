@@ -1,7 +1,7 @@
 node_modules/
 dist/
 src-tauri/target/
-src-tauri/gen/
+src-tauri/gen/schemas/
 release/
 *.log
 
@@ -10,4 +10,7 @@ release/
 # Never commit updater signing keys
 *.key
 *.key.password
+# Never commit the Android signing key or its settings
+*.jks
+keystore.properties
 

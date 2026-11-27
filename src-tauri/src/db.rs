@@ -49,6 +49,9 @@ impl Db {
     }
 }
 
+/// Schema version this build migrates to.
+pub const SCHEMA_VERSION: usize = MIGRATIONS.len();
+
 pub fn schema_version(conn: &Connection) -> AppResult<i64> {
     Ok(conn.query_row("PRAGMA user_version", [], |r| r.get(0))?)
 }

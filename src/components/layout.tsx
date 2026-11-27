@@ -2,9 +2,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEven
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
 import { useQuery } from "@tanstack/react-query";
-import { Moon, Monitor, PanelLeftClose, PanelLeftOpen, Search, Sun, X, CornerDownLeft, Plus, Bell } from "lucide-react";
+import { Moon, Monitor, PanelLeftClose, PanelLeftOpen, Search, Sun, X, CornerDownLeft, Plus, Bell, Menu } from "lucide-react";
 import { api } from "../lib/api";
-import { allItems, ENTITY_LABEL, entityRoute, groups, settingsItem, topItems, type NavItem } from "../lib/nav";
+import { allItems, ENTITY_LABEL, entityRoute, focusItem, gardenItem, groups, homeItem, routineItem, settingsItem, todosItem, topItems, type NavItem } from "../lib/nav";
+import { isMobile } from "../lib/platform";
+import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { useDebounced, useReminderEvents } from "../lib/hooks";
 import { cx } from "../lib/format";
 import { SIDEBAR_MAX, SIDEBAR_MIN, useSetting, useUI, type SidebarGroup, type Theme } from "../stores/ui";
@@ -93,9 +95,23 @@ function GroupSwitcher({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-export function Sidebar() {
-  const { sidebarCollapsed: collapsed, toggleSidebar, sidebarWidth, setSidebarWidth, sidebarGroup, theme, setTheme, setPaletteOpen } = useUI();
+/** Phones and narrow windows get the phone layout: top bar, bottom tabs, slide-out menu. */
+const NARROW = "(max-width: 767px)";
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => isMobile || window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const m = window.matchMedia(NARROW);
+    const h = () => setNarrow(isMobile || m.matches);
+    m.addEventListener("change", h);
+    return () => m.removeEventListener("change", h);
+  }, []);
+  return narrow;
+}
+
+export function Sidebar({ drawer = false, onClose }: { drawer?: boolean; onClose?: () => void }) {
+  const { sidebarCollapsed: storedCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth, sidebarGroup, theme, setTheme, setPaletteOpen } = useUI();
   const [dragging, setDragging] = useState(false);
+  const collapsed = drawer ? false : storedCollapsed;
   const ThemeIcon = themeIcon[theme];
   const group = groups.find((g) => g.id === sidebarGroup) ?? groups[0];
 
@@ -119,7 +135,7 @@ export function Sidebar() {
   return (
     <aside
       className={cx("glass relative z-20 flex h-full shrink-0 flex-col rounded-[18px]", !dragging && "transition-[width] duration-300 ease-[var(--ease)]")}
-      style={{ width: collapsed ? COLLAPSED_W : sidebarWidth }}
+      style={{ width: drawer ? "100%" : collapsed ? COLLAPSED_W : sidebarWidth }}
     >
       <div className={cx("flex items-center gap-2 px-4 pt-4 pb-3", collapsed && "flex-col px-2")}>
         <AppMark className="h-9 w-9" />
@@ -129,18 +145,21 @@ export function Sidebar() {
           </span>}
         <button
           type="button"
-          onClick={toggleSidebar}
-          title={collapsed ? "Expand sidebar (Ctrl+\\)" : "Collapse to icons (Ctrl+\\)"}
+          onClick={drawer ? onClose : toggleSidebar}
+          title={drawer ? "Close menu" : collapsed ? "Expand sidebar (Ctrl+\\)" : "Collapse to icons (Ctrl+\\)"}
           className="rounded-xl p-1.5 text-muted hover:bg-surface-2 hover:text-fg"
         >
-          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          {drawer ? <X size={18} /> : collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
         </button>
       </div>
 
       <div className={cx("pb-3", collapsed ? "px-2" : "px-4")}>
         <button
           type="button"
-          onClick={() => setPaletteOpen(true)}
+          onClick={() => {
+            onClose?.();
+            setPaletteOpen(true);
+          }}
           title="Search (Ctrl+K)"
           className={cx(
             "flex h-9 w-full items-center gap-2 rounded-2xl bg-surface-2 px-3 text-sm text-muted hover:text-fg",
@@ -151,7 +170,7 @@ export function Sidebar() {
           {!collapsed && (
             <>
               <span className="flex-1 truncate text-left">Search…</span>
-              <Kbd>Ctrl K</Kbd>
+              {!drawer && <Kbd>Ctrl K</Kbd>}
             </>
           )}
         </button>
@@ -188,7 +207,7 @@ export function Sidebar() {
         </button>
       </div>
 
-      {!collapsed && (
+      {!collapsed && !drawer && (
         <div
           onPointerDown={startResize}
           onDoubleClick={() => setSidebarWidth(256)}
@@ -376,7 +395,70 @@ function Toasts() {
   );
 }
 
+const TABS = [homeItem, routineItem, focusItem, gardenItem, todosItem];
+
+/** The phone layout: a slim top bar, the page, and tabs along the bottom. */
+function PhoneShell({ scene, motion }: { scene: ReturnType<typeof normalizeScene> | "wash"; motion: string }) {
+  const location = useLocation();
+  const setOpen = useUI((s) => s.setPaletteOpen);
+  const [menu, setMenu] = useState(false);
+  useEffect(() => setMenu(false), [location.pathname]);
+  // Phones ask before an app may show notifications (reminders need them).
+  useEffect(() => {
+    if (!isMobile) return;
+    void isPermissionGranted()
+      .then((ok) => (ok ? undefined : requestPermission()))
+      .catch(() => undefined);
+  }, []);
+  return (
+    <>
+      <div className="app-backdrop">{scene !== "wash" && <SceneBackdrop scene={scene} still={motion === "still"} />}</div>
+      <div className="relative z-10 flex h-[100dvh] flex-col gap-2 overflow-hidden p-2 text-fg">
+        <header className="glass flex shrink-0 items-center gap-2 rounded-2xl px-2 py-1.5">
+          <button type="button" onClick={() => setMenu(true)} aria-label="Menu" className="rounded-xl p-2 text-muted active:bg-surface-2">
+            <Menu size={20} />
+          </button>
+          <AppMark className="h-7 w-7" />
+          <span className="font-display flex-1 truncate text-[17px]">StudyMed</span>
+          <BeatsChip collapsed />
+          <button type="button" onClick={() => setOpen(true)} aria-label="Search" className="rounded-xl p-2 text-muted active:bg-surface-2">
+            <Search size={19} />
+          </button>
+        </header>
+        <main className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[18px]">
+          <div key={location.pathname} className="anim-page min-h-full pb-4">
+            <Outlet />
+          </div>
+        </main>
+        <nav className="glass grid shrink-0 grid-cols-5 rounded-2xl p-1">
+          {TABS.map((it) => (
+            <NavLink
+              key={it.id}
+              to={it.path}
+              className={({ isActive }) => cx("flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[10.5px] font-medium", isActive ? "bg-accent-soft text-accent" : "text-muted")}
+            >
+              <it.icon size={20} strokeWidth={1.8} />
+              {it.label}
+            </NavLink>
+          ))}
+        </nav>
+        {menu && (
+          <div className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px]" onClick={() => setMenu(false)}>
+            <div className="anim-drawer h-full w-[84vw] max-w-[330px] p-2" onClick={(e) => e.stopPropagation()}>
+              <Sidebar drawer onClose={() => setMenu(false)} />
+            </div>
+          </div>
+        )}
+        <CommandPalette />
+        <Toasts />
+        <FocusFinish />
+      </div>
+    </>
+  );
+}
+
 export function Layout() {
+  const narrow = useNarrow();
   const setOpen = useUI((s) => s.setPaletteOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const setGroup = useUI((s) => s.setSidebarGroup);
@@ -408,6 +490,7 @@ export function Layout() {
     return () => window.removeEventListener("keydown", h);
   }, [setOpen, toggleSidebar]);
 
+  if (narrow) return <PhoneShell scene={scene} motion={motion} />;
   return (
     <>
       <div className="app-backdrop">{scene !== "wash" && <SceneBackdrop scene={scene} still={motion === "still"} />}</div>

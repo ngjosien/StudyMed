@@ -102,3 +102,64 @@ pub fn backup_create(db: State<'_, Db>, dest: String) -> AppResult<()> {
     conn.execute("VACUUM INTO ?1", [dest])?;
     Ok(())
 }
+
+/// The whole database as one file's bytes, for saving a backup where the app can't
+/// write a path itself (the phone's file picker hands back a document, not a path).
+#[tauri::command]
+pub fn backup_bytes(db: State<'_, Db>, paths: State<'_, AppPaths>) -> AppResult<tauri::ipc::Response> {
+    let tmp = paths.data_dir.join("backup-outgoing.db");
+    if tmp.exists() {
+        std::fs::remove_file(&tmp)?;
+    }
+    db.conn()?.execute("VACUUM INTO ?1", [tmp.to_string_lossy()])?;
+    let bytes = std::fs::read(&tmp)?;
+    let _ = std::fs::remove_file(&tmp);
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Replace all data with a backup file (sent as raw bytes). The current data is
+/// snapshotted into `backups/` first, and an older backup is upgraded to this
+/// version's schema. Returns the backup's schema version.
+#[tauri::command]
+pub fn backup_restore(db: State<'_, Db>, paths: State<'_, AppPaths>, request: Request<'_>) -> AppResult<i64> {
+    // Desktop sends raw bytes; the phone's IPC sends them as a JSON list of numbers.
+    let owned: Vec<u8>;
+    let bytes: &[u8] = match request.body() {
+        InvokeBody::Raw(b) => b,
+        InvokeBody::Json(serde_json::Value::Array(list)) => {
+            owned = list.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect();
+            &owned
+        }
+        _ => return Err(AppError::msg("expected the backup file's bytes")),
+    };
+    if bytes.len() < 100 || &bytes[..16] != b"SQLite format 3\0" {
+        return Err(AppError::msg("That file isn't a StudyMed backup"));
+    }
+    let tmp = paths.data_dir.join("restore-incoming.db");
+    std::fs::write(&tmp, bytes)?;
+    let result = (|| -> AppResult<i64> {
+        let version = {
+            let src = rusqlite::Connection::open(&tmp)?;
+            let has_modules: i64 = src.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'modules'", [], |r| r.get(0))?;
+            if has_modules == 0 {
+                return Err(AppError::msg("That file isn't a StudyMed backup"));
+            }
+            crate::db::schema_version(&src)?
+        };
+        if version as usize > crate::db::SCHEMA_VERSION {
+            return Err(AppError::msg("That backup is from a newer StudyMed. Update this app first."));
+        }
+        let mut conn = db.conn()?;
+        let dir = paths.data_dir.join("backups");
+        std::fs::create_dir_all(&dir)?;
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        let keep = dir.join(format!("studymed-before-restore-{stamp}.db"));
+        conn.execute("VACUUM INTO ?1", [keep.to_string_lossy()])?;
+        conn.restore(rusqlite::MAIN_DB, &tmp, None::<fn(rusqlite::backup::Progress)>)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        crate::db::migrate(&mut conn)?;
+        Ok(version)
+    })();
+    let _ = std::fs::remove_file(&tmp);
+    result
+}

@@ -16,6 +16,7 @@ import { Button, Card, ConfirmDelete, MilestoneBar, Page, PageHeader, Segmented 
 import { Beats, useBeats } from "../../components/beats";
 import { bedsIn, bloomLaurels, countSessions, DECOR, decorById, LAND_CELLS, landName, landOf, LEGACY_TIER, RARITY, SPECIES, speciesById, STAGE_NAMES, stageOf, TIER_RULE, tierOf, type Species } from "./catalog";
 import type { Cell } from "./scene";
+import { isMobile } from "../../lib/platform";
 
 const m = (n: number) => fmtMinutes(Math.round(n)) || "0m";
 type Credit = { log_id: number; date: string; minutes: number };
@@ -214,6 +215,11 @@ export default function GardenPage() {
   );
 
   const sel = selected != null ? at.get(selected) : undefined;
+  // On a phone the panel sits under the land: bring it into view when a bed is tapped.
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isMobile && selected != null) panel.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selected]);
   const goLand = (l: string) => {
     setLand(l);
     setSelected(null);
@@ -298,7 +304,14 @@ export default function GardenPage() {
       />
       <Page className="pt-2">
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="glass relative h-[min(72vh,760px)] min-h-[480px] overflow-hidden rounded-[22px]" style={{ background: "linear-gradient(180deg, #bfe6ff 0%, #dff3ff 45%, #fff6dc 100%)" }}>
+          {/* Phones can't draw the 3D view inside a frosted-glass blur, so it gets a plain panel there. */}
+          <div
+            className={cx(
+              "relative overflow-hidden rounded-[22px]",
+              isMobile ? "h-[62vh] min-h-[380px] border border-line shadow-lg" : "glass h-[min(72vh,760px)] min-h-[480px]",
+            )}
+            style={{ background: "linear-gradient(180deg, #bfe6ff 0%, #dff3ff 45%, #fff6dc 100%)" }}
+          >
             <Island beds={beds} cells={cells} selected={selected} onPick={pickPlot} />
             <div className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/80 p-1 text-[#2d3a2a] shadow-lg backdrop-blur">
               <button type="button" disabled={li <= 0} onClick={() => goLand(lands[li - 1])} className="rounded-full p-1.5 hover:bg-black/5 disabled:opacity-30" aria-label="Earlier month">
@@ -337,7 +350,7 @@ export default function GardenPage() {
             <p className="pointer-events-none absolute right-3 bottom-3 rounded-full bg-white/60 px-3 py-1 text-[11px] text-[#2d3a2a]/80 backdrop-blur">Drag to turn · scroll to zoom · click a bed</p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4" ref={panel}>
             {selected != null && selected < LAND_CELLS ? (
               <Card className="p-5">
                 {!sel && (

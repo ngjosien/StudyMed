@@ -8,6 +8,10 @@ Download `StudyMed_<version>_x64-setup.exe` from the [latest release](../../rele
 
 The installers aren't code-signed, so Windows SmartScreen warns the first time. Choose *More info → Run anyway*.
 
+### Android
+
+Download `StudyMed_<version>_android-arm64.apk` from the same release and open it on your phone. Android asks once to allow installing apps from your browser or Files app. The phone app keeps its own data. To move data between the laptop and the phone, use **Settings → Data & backup → Save a backup** on one and **Load a backup** on the other (the current data is kept in `backups/` first). The phone app doesn't update itself: install the newer APK over it and your data stays. Reminders arrive while the app is open or recently used.
+
 ## Updates
 
 Installed copies check GitHub for a new release 15 seconds after launch and every 3 hours after that, including while StudyMed sits in the tray. A new version downloads in the background. A banner then counts down 20 seconds and restarts StudyMed to install it. *Not now* puts it off until the window is next closed to the tray. Settings → Updates has a manual check.
@@ -64,7 +68,7 @@ The private signing key lives only at `%USERPROFILE%\.tauri\studymed.key` (its p
 - `backups\` — an automatic copy of the database, made before an app update changes its structure
 - `files\` — attachments, pasted note images, photos, wishlist thumbnails
 
-**Settings → Data & backup** shows these paths and creates a consistent database snapshot. Copy the `files` folder too for a complete backup.
+**Settings → Data & backup** shows these paths, saves a consistent database snapshot, and loads one back (on this PC or the phone). Copy the `files` folder too for a complete backup.
 
 ## Security model
 
@@ -107,6 +111,8 @@ Other scripts:
 | `npm run package` | Local release build + NSIS/MSI installers (needs `TAURI_SIGNING_PRIVATE_KEY` set, because updater artifacts are signed) |
 | `npm run release` | Bump version, commit, push; GitHub builds and publishes the release |
 | `cd src-tauri && cargo test` | Rust unit tests (schema, cascades, search, SM-2, recurrence, crypto, scheduler) |
+
+**Android build** (Java 17, Android SDK + NDK 27; on this PC in `%LOCALAPPDATA%\Android`): `npx tauri android build --apk --target aarch64` compiles the Rust library, but its last step symlinks it into `src-tauri/gen/android`, which Windows only allows with Developer Mode. Without it, copy `libstudymed_lib.so` from `target/aarch64-linux-android/release` to `gen/android/app/src/main/jniLibs/arm64-v8a/` and run `./gradlew assembleArm64Release -x rustBuildArm64Release` in `gen/android`. Release APKs are signed with the key in `%USERPROFILE%\.android\studymed-release.jks` via `gen/android/keystore.properties` (neither is committed). **Back the key up**: a phone only accepts an update signed with the same key.
 
 On this PC, Rust build output goes to `%LOCALAPPDATA%\StudyMed-build\target` (set in `.cargo/config.toml`, which isn't committed because it holds a local path) so OneDrive doesn't sync gigabytes of build files. `node_modules` still lives in the project folder; if OneDrive struggles with it, right-click the folder → *Always keep on this device*.
 

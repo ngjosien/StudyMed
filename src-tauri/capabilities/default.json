@@ -10,9 +10,8 @@
     "notification:default",
     "dialog:default",
     "opener:default",
-    "autostart:default",
-    "process:default",
-    "updater:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
     {
       "identifier": "opener:allow-open-path",
       "allow": [

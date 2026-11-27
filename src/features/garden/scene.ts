@@ -115,6 +115,12 @@ function cloud(r: () => number) {
   return g;
 }
 
+/**
+ * Bumped whenever the picture renderer has run. Some phone graphics drivers let its
+ * drawing area leak into the garden's renderer, so the garden resets its GL state then.
+ */
+let thumbsEpoch = 0;
+
 export class GardenScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -132,6 +138,7 @@ export class GardenScene {
   private sways: THREE.Object3D[] = [];
   private water!: THREE.Mesh;
   private raf = 0;
+  private epoch = thumbsEpoch;
   private clock = new THREE.Clock();
   private ro: ResizeObserver;
   private cols = LAND_COLS;
@@ -457,8 +464,8 @@ export class GardenScene {
     const span = Math.max(this.cols, this.rows * 1.4);
     this.controls.maxDistance = 12 + span * 2.2;
     this.controls.minDistance = 4;
-    const dir = new THREE.Vector3(5.4, 7.2, 8.4).normalize();
-    this.camera.position.copy(this.controls.target).addScaledVector(dir, 6 + span * 1.45);
+    this.baseDist = 6 + span * 1.45;
+    this.frame();
   }
 
   /* ------------------------------------------------------------ Contents */
@@ -552,6 +559,18 @@ export class GardenScene {
     this.renderer.domElement.style.height = `${h}px`;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.frame();
+  }
+
+  /** Puts the camera back far enough to see the whole land; tall (phone) views need more room. */
+  private baseDist = 0;
+  private frame() {
+    if (!this.baseDist) return;
+    const tall = Math.max(1, Math.pow(1.25 / Math.max(0.3, this.camera.aspect), 0.75));
+    const dist = this.baseDist * tall;
+    const dir = new THREE.Vector3(5.4, 7.2, 8.4).normalize();
+    this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
+    this.controls.maxDistance = Math.max(this.controls.maxDistance, dist * 1.3);
   }
 
   /* ------------------------------------------------------------ Frame */
@@ -561,6 +580,11 @@ export class GardenScene {
     const dt = Math.min(0.05, this.clock.getDelta());
     const t = this.clock.elapsedTime;
     this.controls.update();
+    if (this.epoch !== thumbsEpoch) {
+      this.epoch = thumbsEpoch;
+      this.renderer.resetState();
+      this.resize();
+    }
 
     let growing: THREE.Object3D | null = null;
     const blooming: THREE.Object3D[] = [];
@@ -691,6 +715,7 @@ export async function renderThumbs(size = 168): Promise<Record<string, string>> 
   for (const d of DECOR) shoot(`decor:${d.id}`, buildGardenDecor(d.id, 5));
   renderer.dispose();
   renderer.forceContextLoss();
+  thumbsEpoch++;
   return out;
 }
 

@@ -1,3 +1,4 @@
+import { isMobile } from "./platform";
 import { create } from "zustand";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -29,7 +30,8 @@ export const useUpdater = create<UpdaterState>((set) => ({ status: "idle", postp
 let pending: Update | null = null;
 
 async function enabled() {
-  if (import.meta.env.DEV) return false;
+  // The phone app updates by installing a newer APK, not by itself.
+  if (import.meta.env.DEV || isMobile) return false;
   try {
     return (await getIdentifier()) === LIVE_IDENTIFIER;
   } catch {
@@ -89,7 +91,7 @@ export async function installNow() {
 let started = false;
 /** Starts background checks: shortly after launch, then every few hours. */
 export function startAutoUpdate() {
-  if (started) return;
+  if (started || isMobile) return;
   started = true;
   setTimeout(() => void checkForUpdate(), FIRST_CHECK_MS);
   setInterval(() => void checkForUpdate(), CHECK_EVERY_MS);

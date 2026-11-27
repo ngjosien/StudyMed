@@ -1,3 +1,4 @@
+import { isMobile } from "./platform";
 import { invoke } from "@tauri-apps/api/core";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -86,6 +87,10 @@ export const api = {
   fileDelete: (rel: string) => invoke<void>("file_delete", { rel }),
   fileWriteText: (path: string, content: string) => invoke<void>("file_write_text", { path, content }),
   backupCreate: (dest: string) => invoke<void>("backup_create", { dest }),
+  /** The whole database as one file's bytes. */
+  backupBytes: () => invoke<ArrayBuffer>("backup_bytes"),
+  /** Replace all data with a backup file's bytes (the current data is kept in backups/ first). */
+  backupRestore: (bytes: Uint8Array) => invoke<number>("backup_restore", isMobile ? Array.from(bytes) : bytes),
 
   vaultStatus: () => invoke<VaultStatus>("vault_status"),
   vaultSetup: (password: string, autoLockMin: number) => invoke<void>("vault_setup", { password, autoLockMin }),

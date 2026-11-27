@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { readFile, writeFile } from "@tauri-apps/plugin-fs";
+import { isMobile } from "../../lib/platform";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { ChoiceField, DateTimeField, TimeField } from "../../components/pickers";
-import { Bell, Database, FolderOpen, Lock, Monitor, Moon, Settings, Sun, Trash2, Download, Copy, Power, RefreshCw, Play, Pause } from "lucide-react";
+import { Bell, Database, FolderOpen, Lock, Monitor, Moon, Settings, Sun, Trash2, Download, Upload, Copy, Power, RefreshCw, Play, Pause } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppInfo, useMutate } from "../../lib/hooks";
 import { fmtDateTime, toDateTimeStr, addMinutes } from "../../lib/dates";
@@ -300,21 +302,52 @@ function UpdatesSection() {
   );
 }
 
+function PhoneUpdates() {
+  const info = useAppInfo();
+  return (
+    <Section title="Updates" icon={RefreshCw} desc="The phone app doesn't update itself. To update, install the newer StudyMed APK from the GitHub releases page; your data stays.">
+      <p className="text-xs text-muted">Version {info.data?.version ?? ""}</p>
+    </Section>
+  );
+}
+
 function DataSection() {
   const info = useAppInfo();
+  const [restoring, setRestoring] = useState(false);
   const backup = async () => {
     const stamp = new Date().toISOString().slice(0, 10);
-    const dest = await saveDialog({ defaultPath: `StudyMed-backup-${stamp}.db`, filters: [{ name: "SQLite database", extensions: ["db"] }] });
+    const dest = await saveDialog({ defaultPath: `StudyMed-backup-${stamp}.db`, filters: [{ name: "StudyMed backup", extensions: ["db"] }] });
     if (!dest) return;
     try {
-      await api.backupCreate(dest);
+      // The phone's file picker gives a document to write to, not a folder path.
+      if (isMobile) await writeFile(dest, new Uint8Array(await api.backupBytes()));
+      else await api.backupCreate(dest);
       toast.success("Backup saved");
     } catch (e) {
       toast.error(String(e));
     }
   };
+  const restore = async () => {
+    const picked = await openDialog({ multiple: false, directory: false, filters: [{ name: "StudyMed backup", extensions: ["db"] }] });
+    if (!picked) return;
+    const path = typeof picked === "string" ? picked : String(picked);
+    if (!window.confirm("Replace everything in this app with that backup? Your current data is saved in the backups folder first.")) return;
+    setRestoring(true);
+    try {
+      await api.backupRestore(await readFile(path));
+      toast.success("Backup loaded");
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+      toast.error(String(e));
+      setRestoring(false);
+    }
+  };
   return (
-    <Section title="Data & backup" icon={Database} desc="Everything lives on this PC. No cloud, no account.">
+    <Section
+      title="Data & backup"
+      icon={Database}
+      desc={`Everything lives on this ${isMobile ? "phone" : "PC"}. No cloud, no account. To move your data between your laptop and phone, save a backup on one and load it on the other.`}
+    >
       {info.data && (
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
@@ -328,12 +361,14 @@ function DataSection() {
           </div>
           <div className="flex items-center gap-2">
             <span className="w-28 shrink-0 text-muted">Files & photos</span>
-            <code className="min-w-0 flex-1 truncate rounded bg-surface-2 px-2 py-1 text-xs">{info.data.dataDir}\files</code>
-            <IconButton
-              icon={FolderOpen}
-              label="Open folder"
-              onClick={() => openPath(info.data!.dataDir).catch((e) => toast.error(String(e)))}
-            />
+            <code className="min-w-0 flex-1 truncate rounded bg-surface-2 px-2 py-1 text-xs">{info.data.dataDir}{isMobile ? "/files" : "\\files"}</code>
+            {!isMobile && (
+              <IconButton
+                icon={FolderOpen}
+                label="Open folder"
+                onClick={() => openPath(info.data!.dataDir).catch((e) => toast.error(String(e)))}
+              />
+            )}
           </div>
           <p className="text-xs text-muted">
             Version {info.data.version} · schema v{info.data.schemaVersion}
@@ -342,10 +377,13 @@ function DataSection() {
       )}
       <div className="flex flex-wrap items-center gap-3">
         <Button icon={Download} onClick={backup}>
-          Back up database…
+          Save a backup…
+        </Button>
+        <Button icon={Upload} onClick={restore} disabled={restoring}>
+          {restoring ? "Loading backup…" : "Load a backup…"}
         </Button>
         <span className="text-xs text-muted">
-          Creates a consistent snapshot. To back up attachments and photos too, copy the data folder above.
+          A backup holds all your data. Attachments and photos stay on the device they were added on.
         </span>
       </div>
     </Section>
@@ -374,11 +412,11 @@ export default function SettingsPage() {
           <ScenePicker />
         </Section>
         <Notifications />
-        <BackgroundSection />
+        {!isMobile && <BackgroundSection />}
         <Section title="Security" icon={Lock} desc="Your master password encrypts the Password vault and locked notes.">
           <VaultSettings />
         </Section>
-        <UpdatesSection />
+        {isMobile ? <PhoneUpdates /> : <UpdatesSection />}
         <DataSection />
       </Page>
     </>

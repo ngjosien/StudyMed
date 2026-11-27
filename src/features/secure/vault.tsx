@@ -1,3 +1,4 @@
+import { isMobile } from "../../lib/platform";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Lock, LockOpen, ShieldCheck } from "lucide-react";
@@ -53,7 +54,7 @@ export function SetupForm({ onDone }: { onDone?: () => void }) {
       </p>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Master password / PIN">
-          <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
+          <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus={!isMobile} />
         </Field>
         <Field label="Confirm">
           <Input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
@@ -93,7 +94,7 @@ export function UnlockForm({ compact }: { compact?: boolean }) {
         submit();
       }}
     >
-      <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Master password / PIN" autoFocus={!compact} />
+      <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Master password / PIN" autoFocus={!compact && !isMobile} />
       <Button type="submit" variant="primary" icon={LockOpen} disabled={busy || !pw}>
         Unlock
       </Button>
