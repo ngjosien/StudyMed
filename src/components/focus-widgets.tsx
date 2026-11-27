@@ -126,6 +126,7 @@ function Finish({ run }: { run: FocusRun }) {
           focus_minutes: n,
           break_minutes: Math.round(breakMs(run) / 60_000),
           note: note.trim() || null,
+          plant_id: academic ? (run.plantId ?? null) : null,
         }),
       );
       clearFocus();

@@ -190,6 +190,13 @@ export function landName(land: string) {
   return `${MONTHS[m - 1]} ${y}`;
 }
 
+/** The first empty flower bed in a land, or null when it is full. */
+export function firstFreeBed(plants: { land?: unknown; plot?: unknown }[], decor: { land?: unknown; plot?: unknown }[], land: string) {
+  const taken = new Set([...plants, ...decor].filter((r) => (r.land ?? land) === land).map((r) => Number(r.plot)));
+  for (let i = 0; i < bedsIn(land); i++) if (!taken.has(i)) return i;
+  return null;
+}
+
 export const STAGE_NAMES = ["Seed", "Sprout", "Leafy", "Budding", "Opening", "In bloom"];
 export function stageOf(g: number) {
   if (g >= 1) return 5;

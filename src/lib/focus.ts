@@ -15,6 +15,8 @@ export interface FocusSetup {
   /** Topic (academic) or what it is (non-academic). */
   label: string;
   plannedMin: number;
+  /** The garden flower this session grows first (academic sessions). */
+  plantId?: number | null;
 }
 
 export interface FocusRun extends FocusSetup {

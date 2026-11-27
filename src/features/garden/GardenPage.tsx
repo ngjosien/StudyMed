@@ -191,7 +191,7 @@ export default function GardenPage() {
       growingIds.add(p.id);
     }
   const firstAny = queue.find((p) => p.module_id == null) ?? null;
-  const liveTarget = run && run.kind === "academic" && run.moduleId ? (queue.find((p) => p.module_id === run.moduleId) ?? firstAny) : null;
+  const liveTarget = run && run.kind === "academic" && run.moduleId ? (queue.find((p) => p.id === run.plantId) ?? queue.find((p) => p.module_id === run.moduleId) ?? firstAny) : null;
   const growingPlant = liveTarget ?? firstAny ?? queue[0] ?? null;
   const growingNow = queue.filter((p) => growingIds.has(p.id));
   const positionOf = (p: Row) => queue.filter((q) => laneOf(q) === laneOf(p)).findIndex((q) => q.id === p.id);

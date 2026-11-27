@@ -18,6 +18,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0008_plans_hours_gibbs.sql"),
     include_str!("../migrations/0009_topics_garden.sql"),
     include_str!("../migrations/0010_flower_lands.sql"),
+    include_str!("../migrations/0011_focus_flower.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -236,9 +237,17 @@ mod tests {
         conn.execute_batch("INSERT INTO study_logs(id, module_id, date, minutes) VALUES (2, 2, '2026-11-26', 30);").unwrap();
         assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 3"), 30);
         assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 1"), 10);
+        // A focus session grows the flower picked for it first, even one further back in line.
+        conn.execute_batch(
+            "INSERT INTO garden_plants(id, species, land, plot, need_minutes, queue) VALUES (4, 'pansy', '2026-11', 3, 60, 9);
+             INSERT INTO focus_sessions(kind, module_id, planned_minutes, started_at, focus_minutes, plant_id) VALUES ('academic', 1, 45, '2026-11-27T10:00', 45, 4);",
+        )
+        .unwrap();
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 4"), 45);
+        assert_eq!(q("SELECT minutes FROM garden_plants WHERE id = 1"), 10);
         // Deleting a module lets its flowers grow from any study.
         conn.execute_batch("DELETE FROM modules WHERE id = 2;").unwrap();
-        assert_eq!(q("SELECT count(*) FROM garden_plants WHERE module_id IS NULL"), 2);
+        assert_eq!(q("SELECT count(*) FROM garden_plants WHERE module_id IS NULL"), 3);
     }
 
     #[test]

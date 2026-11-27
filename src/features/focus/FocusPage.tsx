@@ -1,12 +1,13 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Coffee, GraduationCap, Minus, Play, Plus, Sparkles, Square, Timer, Trophy } from "lucide-react";
+import { Coffee, GraduationCap, Lock, Minus, Play, Plus, Sparkles, Sprout, Square, Timer, Trophy } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { addMinutes, fmtDateShort, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
 import { Button, Card, ConfirmDelete, Input, MilestoneBar, Page, PageHeader, Progress, Segmented } from "../../components/ui";
-import { speciesById } from "../garden/catalog";
+import { firstFreeBed, landName, landOf, SPECIES, speciesById, type Species } from "../garden/catalog";
+import { toast } from "../../stores/toast";
 import { Thumb, useThumbs } from "../garden/GardenPage";
 import { Beats, Laurel, useBeats } from "../../components/beats";
 import { useSetting } from "../../stores/ui";
@@ -157,6 +158,13 @@ function Setup() {
           )}
         </section>
 
+        {s.kind === "academic" && module && (
+          <section>
+            <Heading n={3}>What will you grow?</Heading>
+            <GrowPicker module={module} value={s.plantId ?? null} onChange={(plantId) => set({ plantId })} />
+          </section>
+        )}
+
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <Button variant="primary" icon={Play} disabled={!ok} onClick={() => startFocus({ ...s, label: s.label.trim() })} className="!h-11 !rounded-2xl !px-6 !text-base">
             Start focusing
@@ -167,6 +175,129 @@ function Setup() {
         </div>
       </div>
     </Card>
+  );
+}
+
+/** Step 3 of the set-up: the garden flower this session grows, or a new one to plant. */
+function GrowPicker({ module, value, onChange }: { module: Row; value: number | null; onChange: (id: number | null) => void }) {
+  const mutate = useMutate();
+  const thumbs = useThumbs();
+  const plants = useRows("garden_plants", undefined, "queue, id").rows;
+  const decor = useRows("garden_decor", undefined, "id").rows;
+  const [planting, setPlanting] = useState(false);
+  const [onlyThis, setOnlyThis] = useState(true);
+  // Flowers this module's study can grow: its own first, then any-study ones, in line order.
+  const options = plants
+    .filter((p) => !p.grown_at && (p.module_id == null || p.module_id === module.id))
+    .sort((a, b) => Number(a.module_id == null) - Number(b.module_id == null) || a.queue - b.queue || a.id - b.id);
+  const chosen = options.find((p) => p.id === value) ?? options[0] ?? null;
+  useEffect(() => {
+    if ((chosen?.id ?? null) !== value) onChange(chosen?.id ?? null);
+  }, [chosen?.id, value, onChange]);
+  const bloomed = plants.filter((p) => p.grown_at).length;
+  const land = landOf();
+  const bed = firstFreeBed(plants, decor, land);
+
+  const plant = async (sp: Species) => {
+    if (bed == null) return;
+    const maxQ = plants.reduce((q, p) => Math.max(q, Number(p.queue)), 0);
+    const row = await mutate(db.insert("garden_plants", { species: sp.id, land, plot: bed, need_minutes: sp.minutes, queue: maxQ + 1, module_id: onlyThis ? module.id : null }));
+    onChange(row.id as number);
+    setPlanting(false);
+    toast.success(`${sp.name} planted in bed ${bed + 1}`);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {options.slice(0, 8).map((p) => {
+          const sp = speciesById.get(p.species);
+          const on = p.id === chosen?.id;
+          return (
+            <button
+              type="button"
+              key={p.id}
+              aria-pressed={on}
+              onClick={() => {
+                onChange(p.id);
+                setPlanting(false);
+              }}
+              className={cx("flex w-44 items-center gap-2.5 rounded-2xl border p-2 text-left transition-colors", on ? "border-accent bg-accent-soft" : "border-line bg-surface-solid/50 hover:border-accent/50")}
+            >
+              <Thumb src={thumbs[`plant:${p.species}`]} size={44} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{sp?.name}</span>
+                <span className="block text-[11px] text-muted">{p.module_id == null ? "Any study" : `${module.code} only`}</span>
+                <Progress value={Number(p.minutes)} max={Number(p.need_minutes)} className="mt-1" />
+              </span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          aria-pressed={planting}
+          onClick={() => setPlanting((v) => !v)}
+          className={cx("flex w-44 items-center gap-2.5 rounded-2xl border border-dashed p-2 text-left text-sm", planting ? "border-accent bg-accent-soft" : "border-line hover:border-accent/50")}
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2">
+            <Plus size={16} />
+          </span>
+          Plant a new flower
+        </button>
+      </div>
+
+      {planting && (
+        <div className="rounded-2xl bg-surface-2/60 p-3">
+          {bed == null ? (
+            <p className="text-sm text-muted">The {landName(land)} land is full. A new land opens next month.</p>
+          ) : (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+                <span className="text-muted">
+                  Goes in bed {bed + 1} of {landName(land)}
+                </span>
+                <label className="ml-auto flex items-center gap-2">
+                  <input type="checkbox" checked={onlyThis} onChange={(e) => setOnlyThis(e.target.checked)} className="accent-[var(--accent)]" />
+                  Only grows with {module.code}
+                </label>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-6">
+                {SPECIES.map((sp) => {
+                  const locked = bloomed < sp.unlock;
+                  return (
+                    <button
+                      type="button"
+                      key={sp.id}
+                      disabled={locked}
+                      onClick={() => plant(sp)}
+                      title={locked ? `Bloom ${sp.unlock - bloomed} more to unlock` : sp.blurb}
+                      className="flex flex-col items-center rounded-2xl border border-line bg-surface-solid/60 p-2 text-center hover:border-accent disabled:opacity-45"
+                    >
+                      {locked ? (
+                        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-2">
+                          <Lock size={14} className="text-muted" />
+                        </span>
+                      ) : (
+                        <Thumb src={thumbs[`plant:${sp.id}`]} size={48} />
+                      )}
+                      <span className="mt-1 text-xs leading-tight font-medium">{sp.name}</span>
+                      <span className="text-[10.5px] text-muted">{hm(sp.minutes)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <Sprout size={13} className="shrink-0 text-[#6aa84f]" />
+        {chosen
+          ? `This session grows your ${speciesById.get(chosen.species)?.name.toLowerCase()} first: ${hm(Math.max(0, Number(chosen.need_minutes) - Number(chosen.minutes)))} more study to bloom. Extra minutes go to the next flower.`
+          : "Nothing to grow yet. Plant a flower to grow it with this session."}
+      </p>
+    </div>
   );
 }
 
@@ -501,7 +632,7 @@ function GardenPanel() {
   const queue = useRows("garden_plants", { grown_at: { null: true } }, "queue, id").rows;
   // A flower for the module you're focusing on grows first; otherwise one for any study.
   const mod = run?.kind === "academic" ? run.moduleId : null;
-  const growing = (mod != null ? queue.find((p) => p.module_id === mod) : undefined) ?? queue.find((p) => p.module_id == null);
+  const growing = (mod != null ? (queue.find((p) => p.id === run?.plantId) ?? queue.find((p) => p.module_id === mod)) : undefined) ?? queue.find((p) => p.module_id == null);
   const live = run && run.kind === "academic" && run.moduleId ? Math.floor(focusMs(run, now) / 60_000) : 0;
   const s = growing ? speciesById.get(growing.species) : undefined;
   const thumbs = useThumbs();
