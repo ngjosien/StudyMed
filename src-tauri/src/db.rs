@@ -21,6 +21,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0011_focus_flower.sql"),
     include_str!("../migrations/0012_flowers_any_study.sql"),
     include_str!("../migrations/0013_exam_weeks.sql"),
+    include_str!("../migrations/0014_class_changes_exam_grades.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -222,6 +223,75 @@ mod tests {
         // Digging up a flower clears its credits.
         conn.execute_batch("DELETE FROM garden_plants WHERE id = 1;").unwrap();
         assert_eq!(q("SELECT count(*) FROM garden_credits"), 0);
+    }
+
+    #[test]
+    fn exams_are_assessments_in_grades() {
+        let conn = test_conn();
+        let n = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, Option<f64>>(0)).unwrap();
+        let s = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, Option<String>>(0)).unwrap();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO exams(id, module_id, name, start_at, weight_pct) VALUES (1, 1, 'Common Test', '2026-12-13 09:00', 20);",
+        )
+        .unwrap();
+        // A new exam is an assessment straight away.
+        assert_eq!(s("SELECT name || ':' || weight_pct || ':' || due_date FROM grading_components WHERE exam_id = 1"), Some("Common Test:20.0:2026-12-13".into()));
+        // Its result on the exam becomes a score in Grades.
+        conn.execute_batch("UPDATE exams SET grade = '24/30' WHERE id = 1;").unwrap();
+        assert_eq!(n("SELECT round(score, 1) FROM grading_components WHERE exam_id = 1"), Some(80.0));
+        // Editing it in Grades updates the exam.
+        conn.execute_batch("UPDATE grading_components SET weight_pct = 25, score_text = '81%', score = 81 WHERE exam_id = 1;").unwrap();
+        assert_eq!(s("SELECT weight_pct || ':' || grade FROM exams WHERE id = 1"), Some("25.0:81%".into()));
+        assert_eq!(n("SELECT score FROM grading_components WHERE exam_id = 1"), Some(81.0));
+        // A letter grade set in Grades keeps the score the app worked out.
+        conn.execute_batch("UPDATE grading_components SET score_text = 'B+', score = 77 WHERE exam_id = 1;").unwrap();
+        assert_eq!(n("SELECT score FROM grading_components WHERE exam_id = 1"), Some(77.0));
+        // Deleting the exam removes its assessment.
+        conn.execute_batch("DELETE FROM exams WHERE id = 1;").unwrap();
+        assert_eq!(n("SELECT count(*) FROM grading_components"), Some(0.0));
+    }
+
+    #[test]
+    fn old_exams_join_their_grades() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        for sql in &MIGRATIONS[..13] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 13).unwrap();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO grading_components(id, module_id, name, weight_pct, score_text, score) VALUES (1, 1, 'common test', 30, '70%', 70), (2, 1, 'Report', 20, NULL, NULL);
+             INSERT INTO exams(id, module_id, name, weight_pct) VALUES (1, 1, 'Common Test', 25), (2, 1, 'Final Exam', 50);",
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        let s = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, Option<String>>(0)).unwrap();
+        // Same name: linked, keeping the Grades worth and result.
+        let linked: Option<i64> = conn.query_row("SELECT exam_id FROM grading_components WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(linked, Some(1));
+        assert_eq!(s("SELECT weight_pct || ':' || grade FROM exams WHERE id = 1"), Some("30.0:70%".into()));
+        // No match: added as a new assessment; the report stays unlinked.
+        assert_eq!(s("SELECT name || ':' || weight_pct FROM grading_components WHERE exam_id = 2"), Some("Final Exam:50.0".into()));
+        assert_eq!(s("SELECT coalesce(exam_id, 'none') FROM grading_components WHERE id = 2"), Some("none".into()));
+    }
+
+    #[test]
+    fn one_day_class_changes() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO modules(id, code, name) VALUES (1, 'HBS', 'Human Biosciences');
+             INSERT INTO class_slots(id, module_id, weekday, start_time, end_time) VALUES (1, 1, 1, '09:00', '11:00');
+             INSERT INTO class_changes(slot_id, date, cancelled) VALUES (1, '2026-12-01', 1);",
+        )
+        .unwrap();
+        // One change per class per day; a change can't end before it starts.
+        assert!(conn.execute("INSERT INTO class_changes(slot_id, date, new_date) VALUES (1, '2026-12-01', '2026-12-02')", []).is_err());
+        assert!(conn.execute("INSERT INTO class_changes(slot_id, date, start_time, end_time) VALUES (1, '2026-12-08', '12:00', '10:00')", []).is_err());
+        conn.execute_batch("DELETE FROM class_slots WHERE id = 1;").unwrap();
+        let left: i64 = conn.query_row("SELECT count(*) FROM class_changes", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]

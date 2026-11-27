@@ -15,6 +15,7 @@ import { StudyStats } from "../../components/study-stats";
 import { useThisWeeksTopics } from "../academics/WeeklyContent";
 import { ChoiceField, DateField, TimeField } from "../../components/pickers";
 import { toast } from "../../stores/toast";
+import { classesOn } from "../../lib/classes";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const KINDS = ["Morning check", "Study", "Class", "Exercise", "Meal", "Rest", "Chores", "Social", "Other"];
@@ -232,12 +233,14 @@ function Today() {
 
   const items = useRows("routine_items", undefined, "start_time").rows;
   const ticks = useRows("routine_ticks", { date: t }).rows;
-  const classes = useRows("class_slots", { weekday: weekdayOf(now) }, "start_time").rows.filter((c) => (!c.starts_on || c.starts_on <= t) && (!c.ends_on || c.ends_on >= t));
+  const slots = useRows("class_slots", undefined, "start_time").rows;
+  const classChanges = useRows("class_changes").rows;
+  const classes = classesOn(slots, classChanges, t, true);
   const timeline = [
     ...itemsOn(items, t).map((i) => ({ key: `r${i.id}`, time: i.start_time as string, end: i.end_time as string | null, title: i.title as string, kind: i.kind as string, item: i as Row | null, color: tintOf(i.kind) })),
     ...classes.map((c) => {
-      const m = byId.get(c.module_id);
-      return { key: `c${c.id}`, time: c.start_time as string, end: c.end_time as string | null, title: `${m?.code ?? ""} ${c.kind}`, kind: "Class", item: null as Row | null, color: (m?.color as string) ?? tintOf("Class") };
+      const m = byId.get(c.slot.module_id);
+      return { key: c.key, time: c.start, end: c.end as string | null, title: `${m?.code ?? ""} ${c.slot.kind}${c.changed ? " (changed)" : ""}`, kind: "Class", item: null as Row | null, color: (m?.color as string) ?? tintOf("Class") };
     }),
   ].sort((a, b) => a.time.localeCompare(b.time));
   const nowHM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -401,6 +404,7 @@ const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "
 function Week() {
   const items = useRows("routine_items", undefined, "start_time").rows;
   const classes = useRows("class_slots", undefined, "start_time").rows;
+  const classChanges = useRows("class_changes").rows;
   const modules = useRows("modules").rows;
   const byId = new Map(modules.map((m) => [m.id, m]));
   const [editing, setEditing] = useState<Row | null | undefined>(undefined);
@@ -443,12 +447,10 @@ function Week() {
             const date = toDateStr(addDays(monday, i));
             const list = [
               ...itemsOn(items, date).map((x) => ({ k: `r${x.id}`, time: x.start_time as string, end: x.end_time as string | null, title: x.title as string, sub: x.kind as string, row: x as Row | null, once: !!x.once_on, color: tintOf(x.kind) })),
-              ...classes
-                .filter((c) => c.weekday === i && (!c.starts_on || c.starts_on <= date) && (!c.ends_on || c.ends_on >= date))
-                .map((c) => {
-                  const m = byId.get(c.module_id);
-                  return { k: `c${c.id}`, time: c.start_time as string, end: c.end_time as string | null, title: `${m?.code ?? ""} ${c.kind}`, sub: "Class", row: null, once: false, color: (m?.color as string) ?? tintOf("Class") };
-                }),
+              ...classesOn(classes, classChanges, date, true).map((c) => {
+                const m = byId.get(c.slot.module_id);
+                return { k: c.key, time: c.start, end: c.end as string | null, title: `${m?.code ?? ""} ${c.slot.kind}`, sub: c.changed ? "Class · changed this day" : "Class", row: null, once: false, color: (m?.color as string) ?? tintOf("Class") };
+              }),
             ].sort((a, b) => a.time.localeCompare(b.time));
             const isToday = date === t;
             return (

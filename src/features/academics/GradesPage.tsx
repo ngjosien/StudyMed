@@ -6,8 +6,8 @@ import { useMutate, useRows } from "../../lib/hooks";
 import { cx } from "../../lib/format";
 import { useSetting } from "../../stores/ui";
 import { DEFAULT_CUTOFFS, fmtPct, GRADES, GRADE_NAMES, gpa, gradeForMark, neededFor, parseScore, standing, TARGETS } from "../../lib/grades";
-import { Button, Card, Empty, Field, IconButton, Input, Modal, Page, PageHeader, Progress, Segmented } from "../../components/ui";
-import { ChoiceField } from "../../components/pickers";
+import { Button, Card, Empty, Field, IconButton, Input, Modal, Page, PageHeader, Progress, Segmented, Select } from "../../components/ui";
+import { parse } from "../../lib/dates";
 import { useFormState } from "../../components/form";
 import { toast } from "../../stores/toast";
 import { ModuleForm } from "./forms";
@@ -70,154 +70,162 @@ function ScoreCell({ comp, cut, onSave }: { comp: Row; cut: Record<string, numbe
 function ModuleGrade({ module: m, cut, onEdit }: { module: Row; cut: Record<string, number>; onEdit: () => void }) {
   const mutate = useMutate();
   const comps = useRows("grading_components", { module_id: m.id }, "position, id").rows;
-  const exams = useRows("exams", { module_id: m.id }).rows;
   const homework = useRows("homework", { module_id: m.id }).rows;
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
-  const [editing, setEditing] = useState(false);
+
+  // Exam results written as a letter ("B+") become a mark here; the database only reads numbers.
+  useEffect(() => {
+    for (const c of comps) {
+      if (c.score != null || !c.score_text) continue;
+      const { pct } = parseScore(String(c.score_text), cut);
+      if (pct != null) void mutate(db.update("grading_components", c.id, { score: pct }));
+    }
+  }, [comps, cut, mutate]);
 
   const s = standing(comps);
   const estimate = s.average !== null ? gradeForMark(s.average, cut) : null;
   const need = m.target_grade ? neededFor(s, cut[m.target_grade]) : null;
-  const addable = [...exams.map((e) => ({ name: e.name, w: e.weight_pct })), ...homework.map((h) => ({ name: h.title, w: h.weight_pct }))].filter(
-    (x) => x.w > 0 && !comps.some((c) => c.name === x.name),
-  );
+  const addable = homework.map((h) => ({ name: h.title, w: h.weight_pct })).filter((x) => x.w > 0 && !comps.some((c) => c.name === x.name));
 
-  let verdict = "Choose a target grade to see what you need.";
-  if (m.final_grade) verdict = `Final grade recorded: ${m.final_grade}.`;
-  else if (m.target_grade && need === null) verdict = s.secured >= cut[m.target_grade] ? "Everything is graded and you reached your estimated cut-off." : "Everything is graded and you're under the estimated cut-off.";
-  else if (m.target_grade && need! > 100) verdict = `An ${m.target_grade} looks out of reach by these estimated cut-offs. The table below shows what still is.`;
-  else if (m.target_grade && need! <= 0) verdict = `You've already earned enough marks for ${m.target_grade}, by the estimated cut-off.`;
-  else if (m.target_grade) verdict = `Average about ${Math.ceil(need!)}% on the remaining ${+s.remaining.toFixed(1)}% to reach ${m.target_grade}.`;
+  let verdict = "Set an aim to see what you need.";
+  if (m.final_grade) verdict = `Final grade: ${m.final_grade}.`;
+  else if (!comps.length) verdict = "Add the module's assessments. Exams you add under Exams appear here by themselves.";
+  else if (m.target_grade && need === null) verdict = s.secured >= cut[m.target_grade] ? `Everything is graded and you reached ${m.target_grade}.` : `Everything is graded, under the ${m.target_grade} cut-off.`;
+  else if (m.target_grade && need! > 100) verdict = `${m.target_grade} looks out of reach by these cut-offs. The grades below are still possible.`;
+  else if (m.target_grade && need! <= 0) verdict = `You've already banked enough for ${m.target_grade}.`;
+  else if (m.target_grade) verdict = `Average about ${Math.ceil(need!)}% on the remaining ${+s.remaining.toFixed(1)}% for ${m.target_grade}.`;
+
+  const shortDate = (d: string) => parse(d)?.toLocaleDateString(undefined, { day: "numeric", month: "short" }) ?? "";
+  const COLS = "grid grid-cols-[minmax(0,1fr)_64px_108px_70px_28px] items-center gap-2";
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center gap-4 p-5" style={{ background: `linear-gradient(120deg, color-mix(in srgb, ${m.color} 55%, transparent), color-mix(in srgb, ${m.color} 12%, transparent))` }}>
-        <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left">
-          <div className="text-xs font-semibold">{m.code}</div>
-          <div className="font-display truncate text-xl">{m.name}</div>
-          <div className="text-xs opacity-75">{m.credits ? `${m.credits} credit units` : "Add credit units to count it in your GPA"}</div>
-        </button>
-        {[
-          ["Now (est.)", estimate],
-          ["Target", m.target_grade],
-          ["Final", m.final_grade],
-        ].map(([label, value]) => (
-          <div key={label} className="w-16 shrink-0 rounded-2xl bg-surface-solid/65 py-2 text-center">
-            <div className="text-xl font-semibold">{value ?? "–"}</div>
-            <div className="text-[10px] text-muted">{label}</div>
+      <div className="flex items-start gap-3 px-5 pt-5 pb-4" style={{ background: `linear-gradient(120deg, color-mix(in srgb, ${m.color} 50%, transparent), color-mix(in srgb, ${m.color} 10%, transparent))` }}>
+        <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left" title="Edit module">
+          <div className="text-[11px] font-semibold opacity-80">
+            {m.code} · {m.credits ? `${m.credits} credit units` : "no credit units yet"}
           </div>
-        ))}
+          <div className="font-display truncate text-xl leading-tight">{m.name}</div>
+        </button>
+        <div className="flex shrink-0 divide-x divide-line overflow-hidden rounded-2xl bg-surface-solid/70 text-center">
+          {[
+            ["Now", estimate],
+            ["Aim", m.target_grade],
+            ["Final", m.final_grade],
+          ].map(([label, value]) => (
+            <div key={label} className="w-14 py-1.5">
+              <div className="text-lg leading-tight font-semibold">{value ?? "–"}</div>
+              <div className="text-[10px] text-muted">{label}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="space-y-4 p-5">
-        <p className="rounded-2xl bg-accent-soft px-4 py-3 text-sm">{verdict}</p>
-        <button type="button" className="text-xs text-accent hover:underline" onClick={() => setEditing(!editing)}>
-          {editing ? "Done choosing" : "Set target or final grade"}
-        </button>
-        {editing && (
-          <div className="anim-item space-y-3">
-            <Field label="Target">
-              <ChoiceField options={TARGETS.map((g) => ({ value: g, label: g }))} value={m.target_grade} clearable onChange={(g) => mutate(db.update("modules", m.id, { target_grade: g }))} />
-            </Field>
-            <Field label="Final grade, once NP releases it">
-              <ChoiceField options={GRADE_NAMES.map((g) => ({ value: g, label: g }))} value={m.final_grade} clearable onChange={(g) => mutate(db.update("modules", m.id, { final_grade: g }))} />
-            </Field>
-          </div>
-        )}
-
-        <div>
-          <div className="grid grid-cols-[1fr_72px_112px_96px_32px] gap-2 px-1 pb-1 text-[11px] text-muted">
-            <span>Assessment</span>
-            <span className="text-center">Worth</span>
-            <span className="text-center">My score</span>
-            <span className="text-center">Counts for</span>
-          </div>
-          {comps.map((c) => {
-            const has = c.score != null;
-            const earned = has ? (Number(c.weight_pct) * Number(c.score)) / 100 : null;
-            return (
-              <div key={c.id} className="grid grid-cols-[1fr_72px_112px_96px_32px] items-center gap-2 py-1 text-sm">
-                <span className="min-w-0 pl-1">
-                  <span className="block truncate">{c.name}</span>
-                  {has && c.score_text && !/%$|^d+(.d+)?$/.test(c.score_text) && <span className="block text-[11px] text-muted">= {fmtPct(Number(c.score))} on this</span>}
-                </span>
-                <NumberCell label="Worth" value={c.weight_pct} onSave={(v) => mutate(db.update("grading_components", c.id, { weight_pct: v ?? 0 }))} />
-                <ScoreCell comp={c} cut={cut} onSave={(patch) => mutate(db.update("grading_components", c.id, patch))} />
-                <span className="tabular text-center text-xs">
-                  {earned == null ? <span className="text-muted">of {+c.weight_pct}%</span> : <><strong>{+earned.toFixed(1)}</strong> of {+c.weight_pct}%</>}
-                </span>
-                <IconButton icon={X} label="Remove assessment" onClick={() => mutate(db.remove("grading_components", c.id))} />
-              </div>
-            );
-          })}
-          <form
-            className="mt-1 flex items-center gap-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const w = Number(weight);
-              if (!name.trim() || !(w > 0 && w <= 100)) return;
-              await mutate(db.insert("grading_components", { module_id: m.id, name: name.trim(), weight_pct: w, position: comps.length }));
-              setName("");
-              setWeight("");
-            }}
-          >
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Class test, report…" className="h-8 flex-1" />
-            <Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="%" className="h-8 w-20" />
-            <Button size="sm" type="submit" icon={Plus} disabled={!name.trim() || !weight}>
-              Add
-            </Button>
-          </form>
-          {addable.length > 0 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={Download}
-              className="mt-2"
-              onClick={() => mutate(db.insertMany("grading_components", addable.map((x, i) => ({ module_id: m.id, name: x.name, weight_pct: x.w, position: comps.length + i }))))}
-            >
-              Add {addable.length} from this module's homework & exams
-            </Button>
-          )}
-          <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-            <Progress value={s.doneWeight} max={100} color={m.color} />
-            <span className="shrink-0">{+s.doneWeight.toFixed(1)}% of the module graded</span>
-          </div>
-          {s.doneWeight > 0 && (
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded-2xl bg-surface-2 px-3 py-2">
-                <div className="eyebrow !text-[9.5px]">Average so far</div>
-                <div className="font-display tabular text-xl">{fmtPct(s.average!)}</div>
-                <div className="text-[11px] text-muted">on the {+s.doneWeight.toFixed(1)}% graded, about {estimate}</div>
-              </div>
-              <div className="rounded-2xl bg-surface-2 px-3 py-2">
-                <div className="eyebrow !text-[9.5px]">Marks banked</div>
-                <div className="font-display tabular text-xl">{+s.secured.toFixed(1)} / 100</div>
-                <div className="text-[11px] text-muted">
-                  {s.remaining > 0 ? `${+s.remaining.toFixed(1)} still to come` : "Everything is graded"}
-                </div>
-              </div>
-            </div>
-          )}
-          {s.totalWeight > 0 && Math.abs(s.totalWeight - 100) > 0.01 && (
-            <p className="mt-1 text-xs text-danger">The weights add up to {s.totalWeight}%. They need to total 100% for this to be right.</p>
-          )}
+      <div className="space-y-4 px-5 pt-4 pb-5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p className="min-w-0 flex-1 text-sm">{verdict}</p>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            Aim
+            <Select className="!h-8 !w-20" value={String(m.target_grade ?? "")} placeholder="–" options={TARGETS} onChange={(e) => mutate(db.update("modules", m.id, { target_grade: e.target.value || null }))} />
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            Final
+            <Select className="!h-8 !w-20" value={String(m.final_grade ?? "")} placeholder="–" options={GRADE_NAMES} onChange={(e) => mutate(db.update("modules", m.id, { final_grade: e.target.value || null }))} />
+          </label>
         </div>
 
-        {!m.final_grade && s.remaining > 0 && (
-          <div>
-            <p className="mb-1.5 text-xs text-muted">Average needed on what's left (estimate)</p>
-            <div className="grid grid-cols-5 gap-1 text-center text-xs">
-              {["A+", "A", "B+", "B", "C+"].map((g) => {
-                const n = neededFor(s, cut[g])!;
-                return (
-                  <div key={g} className={cx("rounded-2xl py-1.5", g === m.target_grade ? "bg-accent text-accent-fg" : "bg-surface-2", n > 100 && "opacity-40")}>
-                    <div className="font-semibold">{g}</div>
-                    {n > 100 ? "No" : `${Math.max(0, Math.ceil(n))}%`}
-                  </div>
-                );
-              })}
+        <div className="overflow-x-auto rounded-2xl border border-line">
+          <div className="min-w-[420px]">
+            <div className={cx(COLS, "border-b border-line px-3 py-2 text-[11px] text-muted")}>
+              <span>Assessment</span>
+              <span className="text-center">Worth %</span>
+              <span className="text-center">Score</span>
+              <span className="text-center">Counts</span>
+              <span />
             </div>
+            {comps.map((c) => {
+              const has = c.score != null;
+              const earned = has ? (Number(c.weight_pct) * Number(c.score)) / 100 : null;
+              return (
+                <div key={c.id} className={cx(COLS, "border-b border-line/60 px-3 py-1.5 text-sm last:border-b-0")}>
+                  <span className="min-w-0">
+                    <span className="block truncate">{c.name}</span>
+                    <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                      {c.exam_id && <span className="rounded-full bg-accent-soft px-1.5 font-medium text-accent">Exam{c.due_date ? ` · ${shortDate(String(c.due_date))}` : ""}</span>}
+                      {has && c.score_text && !/%$|^\d+(\.\d+)?$/.test(String(c.score_text)) && <span>= {fmtPct(Number(c.score))}</span>}
+                      {c.exam_id && !Number(c.weight_pct) && <span className="text-danger">set its worth</span>}
+                    </span>
+                  </span>
+                  <NumberCell label="Worth" value={c.weight_pct} onSave={(v) => mutate(db.update("grading_components", c.id, { weight_pct: v ?? 0 }))} />
+                  <ScoreCell comp={c} cut={cut} onSave={(patch) => mutate(db.update("grading_components", c.id, patch))} />
+                  <span className="tabular text-center text-xs">{earned == null ? <span className="text-muted">–</span> : <strong>{+earned.toFixed(1)}</strong>}</span>
+                  <IconButton icon={X} label={c.exam_id ? "Remove from grades (the exam stays)" : "Remove assessment"} onClick={() => mutate(db.remove("grading_components", c.id))} />
+                </div>
+              );
+            })}
+            {adding ? (
+              <form
+                className="flex items-center gap-2 px-3 py-2"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const w = Number(weight);
+                  if (!name.trim() || !(w > 0 && w <= 100)) return;
+                  await mutate(db.insert("grading_components", { module_id: m.id, name: name.trim(), weight_pct: w, position: comps.length }));
+                  setName("");
+                  setWeight("");
+                  setAdding(false);
+                }}
+              >
+                <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Report, presentation…" className="h-8 flex-1" />
+                <Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="%" className="h-8 w-20" />
+                <Button size="sm" type="submit" disabled={!name.trim() || !weight}>
+                  Add
+                </Button>
+                <IconButton icon={X} label="Cancel" onClick={() => setAdding(false)} />
+              </form>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
+                <Button size="sm" variant="ghost" icon={Plus} onClick={() => setAdding(true)}>
+                  Add assessment
+                </Button>
+                {addable.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={Download}
+                    onClick={() => mutate(db.insertMany("grading_components", addable.map((x, i) => ({ module_id: m.id, name: x.name, weight_pct: x.w, position: comps.length + i }))))}
+                  >
+                    Add {addable.length} from homework
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 text-xs text-muted">
+          <Progress value={s.doneWeight} max={100} color={m.color} />
+          <span className="shrink-0">
+            {+s.doneWeight.toFixed(1)}% graded
+            {s.average !== null && ` · average ${fmtPct(s.average)} (${estimate})`}
+            {s.doneWeight > 0 && ` · ${+s.secured.toFixed(1)} of 100 banked`}
+          </span>
+        </div>
+        {s.totalWeight > 0 && Math.abs(s.totalWeight - 100) > 0.01 && <p className="-mt-2 text-xs text-danger">The worths add up to {+s.totalWeight.toFixed(1)}%; they should total 100%.</p>}
+
+        {!m.final_grade && s.remaining > 0 && comps.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="mr-1 text-muted">Needed on the rest</span>
+            {["A+", "A", "B+", "B", "C+"].map((g) => {
+              const n = neededFor(s, cut[g])!;
+              return (
+                <span key={g} className={cx("rounded-full px-2.5 py-1", g === m.target_grade ? "bg-accent text-accent-fg" : "bg-surface-2", n > 100 && "opacity-40")}>
+                  <b>{g}</b> {n > 100 ? "no" : `${Math.max(0, Math.ceil(n))}%`}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

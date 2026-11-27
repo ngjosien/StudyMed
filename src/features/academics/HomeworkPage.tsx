@@ -2,7 +2,7 @@ import { CalendarRange, ClipboardList, List, Plus } from "lucide-react";
 import { db } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { useDeepLinkForm } from "../../lib/deeplink";
-import { fmtTime, parse } from "../../lib/dates";
+import { fmtTime, parse, today } from "../../lib/dates";
 import type { Row } from "../../lib/api";
 import { cx } from "../../lib/format";
 import { Badge, Button, Card, Checkbox, Empty, Page, PageHeader, Segmented } from "../../components/ui";
@@ -38,7 +38,15 @@ export default function HomeworkPage() {
   const { byId } = useModules();
   const form = useFormState();
   useDeepLinkForm("homework", form);
-  const { rows } = useRows("homework", undefined, "module_id, due_at, id");
+  const { rows } = useRows("homework", undefined, "due_at, id");
+  // Always in date order: still to do from the closest (overdue first), then submitted from the most recent.
+  const t = today();
+  const isDone = (h: Row) => h.status === "Submitted";
+  const sorted = [
+    ...rows.filter((h) => !isDone(h)).sort((a, b) => (a.due_at ? String(a.due_at) : "9999").localeCompare(b.due_at ? String(b.due_at) : "9999")),
+    ...rows.filter(isDone).sort((a, b) => String(b.due_at ?? "").localeCompare(String(a.due_at ?? ""))),
+  ];
+  const sectionOf = (h: Row) => (isDone(h) ? "Submitted" : h.due_at && String(h.due_at).slice(0, 10) < t ? "Overdue" : "To do");
   const [view, setView] = useSetting<"week" | "list">("view.homework", "week");
   const tick = (h: Row, c: boolean) => mutate(db.update("homework", h.id, { status: c ? "Submitted" : "Not Started" }));
 
@@ -47,7 +55,7 @@ export default function HomeworkPage() {
       <PageHeader
         title="Homework"
         icon={ClipboardList}
-        subtitle="Filed under the module it belongs to"
+        subtitle="Closest due first"
         actions={
           <>
             <Segmented<"week" | "list">
@@ -55,7 +63,7 @@ export default function HomeworkPage() {
               onChange={setView}
               options={[
                 { value: "week", label: "Week", icon: CalendarRange },
-                { value: "list", label: "By module", icon: List },
+                { value: "list", label: "List", icon: List },
               ]}
             />
             <Button variant="primary" icon={Plus} onClick={() => form.openNew()}>
@@ -101,9 +109,9 @@ export default function HomeworkPage() {
         ) : (
         <LinkedSections
           type="homework"
-          rows={rows}
+          rows={sorted}
           kinds={KINDS}
-          heading={(h) => byId.get(h.module_id)?.name ?? ""}
+          heading={sectionOf}
           grid="grid gap-3 md:grid-cols-2"
           empty={
             <Empty icon={ClipboardList} title="No homework yet">

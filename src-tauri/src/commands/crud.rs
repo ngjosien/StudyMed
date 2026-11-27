@@ -27,7 +27,7 @@ const TABLES: &[&str] = &[
     "record_links", "connections", "routine_blocks", "study_logs",
     "review_topics", "review_checks", "review_schedule",
     "weekly_limits", "goal_items", "goal_deposits",
-    "class_slots", "tick_goals", "tick_goal_steps", "tick_goal_ticks",
+    "class_slots", "class_changes", "tick_goals", "tick_goal_steps", "tick_goal_ticks",
     "routine_items", "routine_ticks", "study_targets",
     "focus_sessions", "beats", "rewards", "activity_logs", "module_topics", "garden_plants", "garden_decor", "garden_credits",
 ];

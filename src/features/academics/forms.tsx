@@ -102,8 +102,8 @@ export function ExamForm({ state }: { state: FormState }) {
         { key: "venue", label: "Venue", type: "text" },
         { key: "seat", label: "Seat", type: "text" },
         { key: "duration_min", label: "Length (minutes)", type: "number", more: true },
-        { key: "weight_pct", label: "Worth (% of module)", type: "number", more: true },
-        { key: "grade", label: "Result", type: "text", placeholder: "A, or 78%", more: true },
+        { key: "weight_pct", label: "Worth (% of module)", type: "number", hint: "Shows in Grades" },
+        { key: "grade", label: "Result", type: "text", placeholder: "24/30, 78% or B+", hint: "Counts in Grades" },
         { key: "reflection_md", label: "How it went", type: "markdown", more: true },
       ]}
       links={[{ table: "note_exam_links", col: "exam_id", otherCol: "note_id", label: "School notes", options: links.notes }]}

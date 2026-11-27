@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { GraduationCap, Plus, Pencil, MapPin, Clock, Trash2 } from "lucide-react";
+import { CalendarRange, GraduationCap, List, Plus, Pencil, MapPin, Clock, Trash2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRow, useRows } from "../../lib/hooks";
 import { useDeepLinkForm } from "../../lib/deeplink";
-import { fmtDateTime } from "../../lib/dates";
+import { fmtDateTime, fmtTime, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
-import { Badge, Button, Card, Checkbox, Drawer, Empty, IconButton, Input, Page, PageHeader, Progress } from "../../components/ui";
+import { Badge, Button, Card, Checkbox, Drawer, Empty, IconButton, Input, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { WeekBoard } from "../../components/weekboard";
+import { useSetting } from "../../stores/ui";
 import { useFormState } from "../../components/form";
 import { CountdownBadge } from "../../components/shared";
 import { MarkdownView } from "../../components/markdown";
@@ -150,7 +152,15 @@ export default function ExamsPage() {
   const [openId, setOpenId] = useState<number | null>(null);
   const form = useFormState();
   useDeepLinkForm("exams", form, undefined, (r) => setOpenId(r.id));
-  const { rows } = useRows("exams", undefined, "module_id, start_at, id");
+  const { rows } = useRows("exams", undefined, "start_at, id");
+  const [view, setView] = useSetting<"week" | "list">("view.exams", "list");
+  // Always in date order: upcoming from the closest, then past from the most recent.
+  const t = today();
+  const isPast = (e: Row) => !!e.start_at && String(e.start_at).slice(0, 10) < t;
+  const sorted = [
+    ...rows.filter((e) => !isPast(e)).sort((a, b) => (a.start_at ? String(a.start_at) : "9999").localeCompare(b.start_at ? String(b.start_at) : "9999")),
+    ...rows.filter(isPast).sort((a, b) => String(b.start_at).localeCompare(String(a.start_at))),
+  ];
   const topics = useRows("exam_topics").rows;
   const openExam = rows.find((e) => e.id === openId);
   const [planning, setPlanning] = useState<Row | null>(null);
@@ -190,26 +200,65 @@ export default function ExamsPage() {
         title="Exams"
         icon={GraduationCap}
         actions={
-          <Button variant="primary" icon={Plus} onClick={() => form.openNew()}>
-            New exam
-          </Button>
+          <>
+            <Segmented<"week" | "list">
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "week", label: "Week", icon: CalendarRange },
+                { value: "list", label: "List", icon: List },
+              ]}
+            />
+            <Button variant="primary" icon={Plus} onClick={() => form.openNew()}>
+              New exam
+            </Button>
+          </>
         }
       />
       <Page className="space-y-6">
         <CountdownStrip exams={rows} byId={byId} onOpen={setOpenId} onPlan={setPlanning} />
-        <LinkedSections
-          type="exams"
-          rows={rows}
-          kinds={KINDS}
-          heading={(e) => byId.get(e.module_id)?.name ?? ""}
-          grid="grid gap-3 md:grid-cols-2"
-          render={renderExam}
-          empty={
-            <Empty icon={GraduationCap} title="No exams yet">
-              Add exams to get countdowns, topic confidence tracking and reminders.
-            </Empty>
-          }
-        />
+        {view === "week" ? (
+          <WeekBoard
+            rows={rows}
+            dateOf={(e) => e.start_at}
+            isOpen={(e) => !e.grade}
+            onAdd={(date) => form.openNew({ start_at: date + "T09:00" })}
+            addLabel="Add exam on"
+            noDateLabel="Date TBC"
+            render={(e) => {
+              const m = byId.get(e.module_id);
+              return (
+                <Card onClick={() => setOpenId(e.id)} className="relative overflow-hidden p-2.5 pl-3.5">
+                  <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: m?.color }} />
+                  <div className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-muted">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: m?.color }} />
+                    {m?.code}
+                    {e.grade && <span className="ml-auto rounded-full bg-[#10b981]/15 px-1.5 text-[#0f9f6e]">{e.grade}</span>}
+                  </div>
+                  <div className="line-clamp-2 text-[13px] leading-snug font-medium">{e.name}</div>
+                  <div className="mt-1 text-[11px] text-muted">
+                    {String(e.start_at ?? "").length > 10 ? fmtTime(e.start_at) : ""}
+                    {e.venue ? ` · ${e.venue}` : ""}
+                  </div>
+                </Card>
+              );
+            }}
+          />
+        ) : (
+          <LinkedSections
+            type="exams"
+            rows={sorted}
+            kinds={KINDS}
+            heading={(e) => (isPast(e) ? "Past exams" : "Upcoming exams")}
+            grid="grid gap-3 md:grid-cols-2"
+            render={renderExam}
+            empty={
+              <Empty icon={GraduationCap} title="No exams yet">
+                Add exams to get countdowns, topic confidence tracking and reminders.
+              </Empty>
+            }
+          />
+        )}
       </Page>
       <Drawer
         open={!!openExam}

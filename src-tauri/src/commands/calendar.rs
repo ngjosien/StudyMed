@@ -58,6 +58,14 @@ pub fn calendar_range(db: State<'_, Db>, start: String, end: String) -> AppResul
         items.push(item("review", "review_topics", &r["topic_id"], format!("Recall: {title} (day {offset})"), due, None, true, None, done));
     }
 
+    // One-day changes to classes: cancelled, at another time or room, or moved to another day.
+    let changes = query_json(&conn, "SELECT slot_id, date, cancelled, new_date, start_time, end_time, venue FROM class_changes", vec![])?;
+    let change_for = |slot: i64, day: &str| {
+        changes
+            .iter()
+            .find(|x| x.get("slot_id").and_then(Value::as_i64) == Some(slot) && x.get("date").and_then(Value::as_str) == Some(day))
+    };
+
     // Weekly classes, coloured by module
     for c in query_json(
         &conn,
@@ -69,22 +77,34 @@ pub fn calendar_range(db: State<'_, Db>, start: String, end: String) -> AppResul
         let first = c.get("starts_on").and_then(Value::as_str).and_then(parse_date);
         let last = c.get("ends_on").and_then(Value::as_str).and_then(parse_date);
         let s = |k: &str| c.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let slot = c.get("id").and_then(Value::as_i64).unwrap_or(0);
+        let mut push = |day: String, ch: Option<&Row>| {
+            let pick = |k: &str| ch.and_then(|x| x.get(k)).and_then(Value::as_str).map(str::to_string);
+            let start = pick("start_time").unwrap_or_else(|| s("start_time"));
+            let end = pick("end_time").unwrap_or_else(|| s("end_time"));
+            let venue = pick("venue").or_else(|| c.get("venue").and_then(Value::as_str).map(str::to_string));
+            let mut it = item("class", "class_slots", &c["id"], format!("{} {}", s("code"), s("kind")), format!("{day}T{start}"), Some(format!("{day}T{end}")), false, venue, 0);
+            it.insert("color".into(), c.get("color").cloned().unwrap_or(Value::Null));
+            items.push(it);
+        };
         for day in from.iter_days().take_while(|d| *d <= to) {
             let in_term = first.is_none_or(|f| day >= f) && last.is_none_or(|l| day <= l);
             if day.weekday().num_days_from_monday() == weekday && in_term {
-                let mut it = item(
-                    "class",
-                    "class_slots",
-                    &c["id"],
-                    format!("{} {}", s("code"), s("kind")),
-                    format!("{day}T{}", s("start_time")),
-                    Some(format!("{day}T{}", s("end_time"))),
-                    false,
-                    c.get("venue").and_then(Value::as_str).map(str::to_string),
-                    0,
-                );
-                it.insert("color".into(), c.get("color").cloned().unwrap_or(Value::Null));
-                items.push(it);
+                let ch = change_for(slot, &day.to_string());
+                let cancelled = ch.and_then(|x| x.get("cancelled")).and_then(Value::as_i64).unwrap_or(0) == 1;
+                let moved = ch.and_then(|x| x.get("new_date")).and_then(Value::as_str).is_some();
+                if !cancelled && !moved {
+                    push(day.to_string(), ch);
+                }
+            }
+        }
+        // Classes moved here from another day.
+        for ch in changes.iter().filter(|x| x.get("slot_id").and_then(Value::as_i64) == Some(slot)) {
+            let cancelled = ch.get("cancelled").and_then(Value::as_i64).unwrap_or(0) == 1;
+            if let Some(day) = ch.get("new_date").and_then(Value::as_str).and_then(parse_date) {
+                if !cancelled && day >= from && day <= to {
+                    push(day.to_string(), Some(ch));
+                }
             }
         }
     }
