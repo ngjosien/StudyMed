@@ -1,6 +1,6 @@
 // What grows in the study garden: flowers, each in five colours. A flower's colour
-// is decided by how many days of study it took to bloom: one day gives the rarest
-// colour. Bloomed flowers give laurels: more for longer flowers and rarer colours.
+// is decided by how many study sessions it took to bloom: one session gives the
+// rarest colour. Bloomed flowers give laurels: more for longer flowers and rarer colours.
 // Every month gets a new land with one flower bed per day of the month.
 
 export interface Hue {
@@ -122,28 +122,28 @@ export const speciesById = new Map(SPECIES.map((s) => [s.id, s]));
 
 /* ------------------------------------------------------------ Colours and rewards */
 export const RARITY = ["Common", "Uncommon", "Rare", "Very rare", "Rarest"];
-/** Colour tier from the number of days a flower took to bloom. */
-export function tierOf(days: number) {
-  if (days <= 1) return 4;
-  if (days === 2) return 3;
-  if (days === 3) return 2;
-  if (days <= 5) return 1;
+/** Colour tier from the number of study sessions a flower took to bloom. */
+export function tierOf(sessions: number) {
+  if (sessions <= 1) return 4;
+  if (sessions === 2) return 3;
+  if (sessions === 3) return 2;
+  if (sessions <= 5) return 1;
   return 0;
 }
-export const TIER_RULE = ["6+ days", "4 or 5 days", "3 days", "2 days", "1 day"];
+export const TIER_RULE = ["6+ sessions", "4 or 5 sessions", "3 sessions", "2 sessions", "1 session"];
 /** Flowers grown before colours were kept get this tier. */
 export const LEGACY_TIER = 2;
-const PER_HOUR = [6, 9, 12, 16, 22];
-/** Laurels for a bloomed flower: more for longer flowers and rarer colours. */
-export const bloomLaurels = (minutes: number, tier: number) => Math.max(3, Math.round((minutes / 60) * PER_HOUR[tier]));
+const PER_HOUR = [1, 2, 4, 6, 10];
+/** Laurels for a bloomed flower: more for longer flowers and rarer colours (1 at the least). */
+export const bloomLaurels = (minutes: number, tier: number) => Math.max(1, Math.round((minutes / 60) * PER_HOUR[tier]));
 
-/** Days that count toward a flower's colour: days it got at least 10 minutes (and at least one). */
-export function countDays(credits: { date: string; minutes: number }[], extra?: { date: string; minutes: number }) {
-  const by = new Map<string, number>();
-  for (const c of extra ? [...credits, extra] : credits) by.set(c.date, (by.get(c.date) ?? 0) + Number(c.minutes));
+/** Sessions that count toward a flower's colour: study logs that gave it at least 10 minutes (and at least one). */
+export function countSessions(credits: { log_id: number; minutes: number }[]) {
+  const by = new Map<number, number>();
+  for (const c of credits) by.set(c.log_id, (by.get(c.log_id) ?? 0) + Number(c.minutes));
   let n = 0;
   for (const v of by.values()) if (v >= 10) n++;
-  return Math.max(1, n);
+  return n;
 }
 
 /* ------------------------------------------------------------ Decorations */

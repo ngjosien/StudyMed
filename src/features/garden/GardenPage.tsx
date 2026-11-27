@@ -1,24 +1,24 @@
 // The study garden: a flower garden with a new land every month (one bed per day).
 // Plant a flower, then study to grow it: focus sessions and logged study grow the
-// flower first in line, and it keeps its progress between sessions. The fewer days
-// a flower takes to bloom, the rarer its colour. Bloomed flowers give laurels to
+// flower first in line, and it keeps its progress between sessions. The fewer
+// sessions a flower takes to bloom, the rarer its colour. Bloomed flowers give laurels to
 // collect, more for longer flowers and rarer colours. Laurels buy decorations.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRightLeft, ChevronLeft, ChevronRight, Lock, MoveRight, RotateCw, Sprout, Star, Timer, Undo2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
-import { fmtDate, today } from "../../lib/dates";
+import { fmtDate } from "../../lib/dates";
 import { cx, fmtMinutes } from "../../lib/format";
 import { toast } from "../../stores/toast";
 import { focusMs, useFocusRun, useTick } from "../../lib/focus";
-import { Button, Card, ConfirmDelete, MilestoneBar, Page, PageHeader, Segmented, Select } from "../../components/ui";
+import { Button, Card, ConfirmDelete, MilestoneBar, Page, PageHeader, Segmented } from "../../components/ui";
 import { Beats, useBeats } from "../../components/beats";
-import { bedsIn, bloomLaurels, countDays, DECOR, decorById, LAND_CELLS, landName, landOf, LEGACY_TIER, RARITY, SPECIES, speciesById, STAGE_NAMES, stageOf, TIER_RULE, tierOf, type Species } from "./catalog";
+import { bedsIn, bloomLaurels, countSessions, DECOR, decorById, LAND_CELLS, landName, landOf, LEGACY_TIER, RARITY, SPECIES, speciesById, STAGE_NAMES, stageOf, TIER_RULE, tierOf, type Species } from "./catalog";
 import type { Cell } from "./scene";
 
 const m = (n: number) => fmtMinutes(Math.round(n)) || "0m";
-type Credit = { date: string; minutes: number };
+type Credit = { log_id: number; date: string; minutes: number };
 
 /** Pictures of each flower colour and decoration, rendered from the 3D models once per session. */
 let thumbCache: Record<string, string> | null = null;
@@ -159,15 +159,12 @@ export default function GardenPage() {
     for (const c of creditRows) map.set(c.plant_id, [...(map.get(c.plant_id) ?? []), c]);
     return map;
   }, [creditRows]);
-  /** The colour a flower has (bloomed) or would have if it bloomed today. */
+  const sessionsOf = (p: Row) => countSessions(credits.get(p.id) ?? []);
+  /** The colour a flower has (bloomed) or would have if it bloomed in its next session. */
   const tierFor = (p: Row) => {
     const cs = credits.get(p.id) ?? [];
-    if (p.grown_at) return cs.length ? tierOf(countDays(cs)) : LEGACY_TIER;
-    return tierOf(countDays(cs, { date: today(), minutes: 10 }));
-  };
-  const daysSoFar = (p: Row) => {
-    const cs = credits.get(p.id) ?? [];
-    return cs.length ? countDays(cs) : 0;
+    if (p.grown_at) return cs.length ? tierOf(Math.max(1, countSessions(cs))) : LEGACY_TIER;
+    return tierOf(countSessions(cs) + 1);
   };
   const rewardFor = (p: Row) => bloomLaurels(Number(p.need_minutes), tierFor(p));
 
@@ -178,26 +175,11 @@ export default function GardenPage() {
   const here = plants.filter((p) => (p.land ?? current) === land);
   const hereDecor = decor.filter((d) => (d.land ?? current) === land);
 
-  // Each flower grows from any study, or only from one module's study. Study goes to the
-  // first flower for that module, else to the first any-study flower: so one flower
-  // grows per module at a time ("lanes"), plus one for any study.
+  // Study grows the flower first in line (or the one picked for the running focus session).
   const queue = plants.filter((p) => !p.grown_at);
-  const laneOf = (p: Row) => (p.module_id == null ? "any" : `m${p.module_id}`);
-  const growingIds = new Set<number>();
-  const seenLanes = new Set<string>();
-  for (const p of queue)
-    if (!seenLanes.has(laneOf(p))) {
-      seenLanes.add(laneOf(p));
-      growingIds.add(p.id);
-    }
-  const firstAny = queue.find((p) => p.module_id == null) ?? null;
-  const liveTarget = run && run.kind === "academic" && run.moduleId ? (queue.find((p) => p.id === run.plantId) ?? queue.find((p) => p.module_id === run.moduleId) ?? firstAny) : null;
-  const growingPlant = liveTarget ?? firstAny ?? queue[0] ?? null;
-  const growingNow = queue.filter((p) => growingIds.has(p.id));
-  const positionOf = (p: Row) => queue.filter((q) => laneOf(q) === laneOf(p)).findIndex((q) => q.id === p.id);
-  const modules = useRows("modules", { archived: 0 }, "code").rows;
-  const moduleCode = (id: unknown) => (id == null ? null : (modules.find((x) => x.id === id)?.code ?? "a module"));
-  const [growWith, setGrowWith] = useState<number | null>(null);
+  const picked = run && run.kind === "academic" && run.moduleId ? queue.find((p) => p.id === run.plantId) : undefined;
+  const growingPlant = picked ?? queue[0] ?? null;
+  const positionOf = (p: Row) => (p.id === growingPlant?.id ? 0 : queue.filter((q) => q.id !== growingPlant?.id).findIndex((q) => q.id === p.id) + 1);
   const grown = plants.filter((p) => p.grown_at);
   const toCollect = grown.filter((p) => p.claimed == null);
   const at = useMemo(() => {
@@ -254,10 +236,8 @@ export default function GardenPage() {
   const plant = async (s: Species) => {
     if (selected == null) return;
     const maxQ = plants.reduce((q, p) => Math.max(q, Number(p.queue)), 0);
-    const ahead = queue.some((p) => (p.module_id ?? null) === growWith);
-    await mutate(db.insert("garden_plants", { species: s.id, land, plot: selected, need_minutes: s.minutes, queue: maxQ + 1, module_id: growWith }));
-    const how = growWith == null ? "Study anything" : `Study ${moduleCode(growWith)}`;
-    toast.success(ahead ? `${s.name} planted. It grows after the flowers ahead of it.` : `${s.name} planted. ${how} to make it grow.`);
+    await mutate(db.insert("garden_plants", { species: s.id, land, plot: selected, need_minutes: s.minutes, queue: maxQ + 1 }));
+    toast.success(queue.length ? `${s.name} planted. It grows after the flowers ahead of it.` : `${s.name} planted. Study to make it grow.`);
   };
   const place = async (kind: string) => {
     if (selected == null) return;
@@ -306,7 +286,7 @@ export default function GardenPage() {
       <PageHeader
         title="Garden"
         icon={Sprout}
-        subtitle="Plant a flower, then study to grow it. The fewer days it takes to bloom, the rarer its colour."
+        subtitle="Plant a flower, then study to grow it. The fewer sessions it takes to bloom, the rarer its colour."
         actions={
           <span className="flex items-center gap-3 text-sm">
             <Beats n={balance} />
@@ -378,17 +358,7 @@ export default function GardenPage() {
                     {tab === "seeds" && selected < beds ? (
                       isCurrent ? (
                         <>
-                        <label className="mb-2 flex items-center gap-2 rounded-2xl bg-surface-2/60 px-3 py-2 text-sm">
-                          <span className="text-muted">Grows with</span>
-                          <Select
-                            className="flex-1"
-                            value={growWith == null ? "" : String(growWith)}
-                            onChange={(e) => setGrowWith(e.target.value ? Number(e.target.value) : null)}
-                            placeholder="Any study"
-                            options={modules.map((x) => ({ value: x.id, label: `${x.code} study only` }))}
-                          />
-                        </label>
-                        <div className="max-h-[52vh] space-y-1 overflow-y-auto pr-1">
+                        <div className="max-h-[56vh] space-y-1 overflow-y-auto pr-1">
                           {SPECIES.map((s) => {
                             const locked = grown.length < s.unlock;
                             return (
@@ -458,12 +428,11 @@ export default function GardenPage() {
                     p={sel.row}
                     thumbs={thumbs}
                     tier={tierFor(sel.row)}
-                    days={daysSoFar(sel.row)}
+                    sessions={sessionsOf(sel.row)}
                     reward={rewardFor(sel.row)}
                     progress={progressOf(sel.row)}
                     live={growingPlant?.id === sel.row.id ? live : 0}
                     position={positionOf(sel.row)}
-                    modules={modules}
                     onGrowNext={growNext}
                     onMove={() => setMoving({ kind: "plant", id: sel.row.id })}
                     onCollect={() => collect([sel.row])}
@@ -497,50 +466,21 @@ export default function GardenPage() {
                   <>
                     <h2 className="font-display mt-1 flex items-center gap-3 text-xl">
                       <Thumb src={thumbs[`flower:${growingPlant.species}:${tierFor(growingPlant)}`]} size={52} />
-                      <span>
-                        {speciesById.get(growingPlant.species)?.name}
-                        <span className="block font-sans text-xs text-muted">from {growingPlant.module_id == null ? "any study" : `${moduleCode(growingPlant.module_id)} study`}</span>
-                      </span>
+                      {speciesById.get(growingPlant.species)?.name}
                     </h2>
                     <MilestoneBar className="mt-3" value={Number(growingPlant.minutes) + live} max={Number(growingPlant.need_minutes)} color="#7cc152" label="Growth" />
                     <p className="mt-2 text-sm text-muted">
                       {m(Math.max(0, Number(growingPlant.need_minutes) - Number(growingPlant.minutes) - live))} more study to bloom · {STAGE_NAMES[stageOf(progressOf(growingPlant))]}
                     </p>
-                    <ColourHint s={speciesById.get(growingPlant.species)} tier={tierFor(growingPlant)} days={daysSoFar(growingPlant)} reward={rewardFor(growingPlant)} />
+                    <ColourHint s={speciesById.get(growingPlant.species)} tier={tierFor(growingPlant)} sessions={sessionsOf(growingPlant)} reward={rewardFor(growingPlant)} />
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-muted">Nothing growing. Click an empty bed on the land and pick a flower.</p>
                 )}
-                {growingNow.length > 1 && (
-                  <div className="mt-4">
-                    <p className="eyebrow mb-1 !text-[9.5px]">Also growing</p>
-                    {growingNow
-                      .filter((p) => p.id !== growingPlant?.id)
-                      .map((p) => (
-                        <button
-                          type="button"
-                          key={p.id}
-                          onClick={() => {
-                            if ((p.land ?? current) !== land) setLand(p.land ?? current);
-                            setSelected(p.plot);
-                          }}
-                          className="flex w-full items-center gap-2 rounded-xl px-1.5 py-1 text-left text-sm hover:bg-surface-2"
-                        >
-                          <Thumb src={thumbs[`plant:${p.species}`]} size={26} className="!rounded-lg" />
-                          <span className="flex-1">
-                            {speciesById.get(p.species)?.name} <span className="text-xs text-muted">· {p.module_id == null ? "any study" : `${moduleCode(p.module_id)} study`}</span>
-                          </span>
-                          <span className="text-xs text-muted">
-                            {m(p.minutes)} / {m(p.need_minutes)}
-                          </span>
-                        </button>
-                      ))}
-                  </div>
-                )}
-                {queue.length > growingNow.length && (
+                {queue.length > 1 && (
                   <div className="mt-4">
                     <p className="eyebrow mb-1 !text-[9.5px]">Up next</p>
-                    {queue.filter((p) => !growingIds.has(p.id)).slice(0, 5).map((p, i) => (
+                    {queue.filter((p) => p.id !== growingPlant?.id).slice(0, 5).map((p, i) => (
                       <button
                         type="button"
                         key={p.id}
@@ -552,9 +492,7 @@ export default function GardenPage() {
                       >
                         <span className="w-4 text-xs text-muted">{i + 1}</span>
                         <Thumb src={thumbs[`plant:${p.species}`]} size={26} className="!rounded-lg" />
-                        <span className="flex-1">
-                          {speciesById.get(p.species)?.name} <span className="text-xs text-muted">· {p.module_id == null ? "any study" : `${moduleCode(p.module_id)} study`}</span>
-                        </span>
+                        <span className="flex-1">{speciesById.get(p.species)?.name}</span>
                         <span className="text-xs text-muted">
                           {m(p.minutes)} / {m(p.need_minutes)}
                         </span>
@@ -590,9 +528,9 @@ export default function GardenPage() {
               <p className="eyebrow mt-5 mb-2 !text-[9.5px]">How it works</p>
               <ol className="space-y-2 text-sm">
                 {[
-                  ["Plant", "Pick an empty bed and a flower. Choose any study, or one module's study only."],
+                  ["Plant", "Pick an empty bed and a flower, here or when you set up a focus session."],
                   ["Study", "Focus sessions and logged study grow it. Stop whenever; it carries on next time."],
-                  ["Bloom", "Its colour depends on how many days it took. Bloom it in one day for the rarest colour."],
+                  ["Bloom", "Its colour depends on how many sessions it took. Bloom it in one session for the rarest colour."],
                   ["Collect", "Tap the golden token to collect laurels. Rarer colours and longer flowers give more."],
                 ].map(([t, d], i) => (
                   <li key={t} className="flex gap-2.5">
@@ -603,7 +541,7 @@ export default function GardenPage() {
                   </li>
                 ))}
               </ol>
-              <p className="mt-3 text-xs text-muted">The flower guide below shows every colour, the days it needs and the laurels it gives.</p>
+              <p className="mt-3 text-xs text-muted">The flower guide below shows every colour, the sessions it needs and the laurels it gives.</p>
             </Card>
           </div>
         </div>
@@ -616,7 +554,7 @@ export default function GardenPage() {
             </span>
           </div>
           <p className="mb-4 text-sm text-muted">
-            Every flower comes in five colours. The fewer days of study it takes to bloom, the rarer the colour and the more laurels it gives. A day counts when you study at least 10 minutes on it.
+            Every flower comes in five colours. The fewer study sessions it takes to bloom, the rarer the colour and the more laurels it gives. A session counts when it gives the flower at least 10 minutes.
           </p>
           <div className="mb-3 hidden grid-cols-[8rem_repeat(5,minmax(0,1fr))] gap-2 text-center text-[11px] text-muted md:grid">
             <span />
@@ -695,7 +633,7 @@ function CollectButton({ n, color, onCollect, label = "Collect" }: { n: number; 
 }
 
 /** What colour a growing flower is heading for. */
-function ColourHint({ s, tier, days, reward }: { s?: Species; tier: number; days: number; reward: number }) {
+function ColourHint({ s, tier, sessions, reward }: { s?: Species; tier: number; sessions: number; reward: number }) {
   if (!s) return null;
   const hue = s.hues[tier];
   return (
@@ -707,8 +645,8 @@ function ColourHint({ s, tier, days, reward }: { s?: Species; tier: number; days
         <Stars tier={tier} className="ml-auto" />
       </div>
       <p className="mt-2">
-        {days > 0 ? `Studied on ${days} day${days > 1 ? "s" : ""} so far. ` : ""}
-        Bloom it today for a <b>{hue.name.toLowerCase()}</b> {s.name.toLowerCase()} ({RARITY[tier].toLowerCase()}) and <Beats n={reward} />.
+        {sessions > 0 ? `Grown over ${sessions} session${sessions > 1 ? "s" : ""} so far. ` : ""}
+        Bloom it in {sessions > 0 ? "your next session" : "one session"} for a <b>{hue.name.toLowerCase()}</b> {s.name.toLowerCase()} ({RARITY[tier].toLowerCase()}) and <Beats n={reward} />.
       </p>
     </div>
   );
@@ -718,12 +656,11 @@ function FlowerPanel({
   p,
   thumbs,
   tier,
-  days,
+  sessions,
   reward,
   progress,
   live,
   position,
-  modules,
   onGrowNext,
   onMove,
   onCollect,
@@ -731,12 +668,11 @@ function FlowerPanel({
   p: Row;
   thumbs: Record<string, string>;
   tier: number;
-  days: number;
+  sessions: number;
   reward: number;
   progress: number;
   live: number;
   position: number;
-  modules: Row[];
   onGrowNext: (p: Row) => void;
   onMove: () => void;
   onCollect: () => Promise<void>;
@@ -745,11 +681,9 @@ function FlowerPanel({
   const s = speciesById.get(p.species);
   const done = Number(p.minutes) + live;
   const hue = s?.hues[tier];
-  const code = p.module_id == null ? null : (modules.find((x) => x.id === p.module_id)?.code ?? "a module");
-  const lane = code ? `${code} study` : "any study";
   return (
     <div>
-      <p className="eyebrow !text-[9.5px]">{p.grown_at ? `In bloom since ${fmtDate(String(p.grown_at).slice(0, 10))}` : position === 0 ? `Growing now · from ${lane}` : `Waiting · number ${position + 1} in line for ${lane}`}</p>
+      <p className="eyebrow !text-[9.5px]">{p.grown_at ? `In bloom since ${fmtDate(String(p.grown_at).slice(0, 10))}` : position === 0 ? "Growing now" : `Waiting · number ${position + 1} in line`}</p>
       <h2 className="font-display mt-1 flex items-center gap-3 text-xl">
         <Thumb src={thumbs[p.grown_at ? `flower:${p.species}:${tier}` : `plant:${p.species}`]} size={56} />
         <span>
@@ -760,7 +694,7 @@ function FlowerPanel({
       {p.grown_at ? (
         <div className="mt-3 text-sm">
           <p className="text-muted">
-            {RARITY[tier]} · {days > 0 ? `bloomed in ${days} day${days > 1 ? "s" : ""}` : "grown before colours were kept"} · {m(p.need_minutes)} of study
+            {RARITY[tier]} · {sessions > 0 ? `bloomed in ${sessions} session${sessions > 1 ? "s" : ""}` : "grown before colours were kept"} · {m(p.need_minutes)} of study
           </p>
           <div className="mt-3">{p.claimed == null ? <CollectButton n={reward} color={hue?.petal ?? "#ffb3cb"} onCollect={onCollect} /> : <span className="text-muted">Collected <Beats n={Number(p.claimed)} /></span>}</div>
         </div>
@@ -771,17 +705,7 @@ function FlowerPanel({
           <p className="mt-2 text-sm text-muted">
             {m(Math.min(done, Number(p.need_minutes)))} of {m(p.need_minutes)} studied · {m(Math.max(0, Number(p.need_minutes) - done))} to go
           </p>
-          <ColourHint s={s} tier={tier} days={days} reward={reward} />
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <span className="text-muted">Grows with</span>
-            <Select
-              className="flex-1"
-              value={p.module_id == null ? "" : String(p.module_id)}
-              onChange={(e) => mutate(db.update("garden_plants", p.id, { module_id: e.target.value ? Number(e.target.value) : null }))}
-              placeholder="Any study"
-              options={modules.map((x) => ({ value: x.id, label: `${x.code} study only` }))}
-            />
-          </label>
+          <ColourHint s={s} tier={tier} sessions={sessions} reward={reward} />
         </>
       )}
       <p className="mt-2 text-xs text-muted">Planted {fmtDate(String(p.planted_at).slice(0, 10))}</p>

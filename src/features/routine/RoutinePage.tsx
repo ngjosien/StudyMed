@@ -1,8 +1,8 @@
 // Routine: a set plan for each day of the week, what is coming up (homework, exams,
 // unfinished to-dos), and weekly study targets with no fixed time.
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { BookOpen, CalendarClock, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
+import { BookOpen, CalendarClock, ChevronLeft, ChevronRight, ClipboardList, GraduationCap, ListTodo, Minus, Pencil, Plus, Sunrise, Timer, Trash2, Undo2 } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useNow, useRows } from "../../lib/hooks";
 import { addDays, daysUntil, fmtDateShort, fmtDateTime, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
@@ -397,6 +397,7 @@ function Today() {
 }
 
 /* ------------------------------------------------------------ Week plan */
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 function Week() {
   const items = useRows("routine_items", undefined, "start_time").rows;
   const classes = useRows("class_slots", undefined, "start_time").rows;
@@ -405,6 +406,17 @@ function Week() {
   const [editing, setEditing] = useState<Row | null | undefined>(undefined);
   const monday = startOfWeek(new Date());
   const t = today();
+  const strip = useRef<HTMLDivElement>(null);
+  // Open on today's column; the arrows move one day at a time.
+  useEffect(() => {
+    const el = strip.current?.querySelector<HTMLElement>("[data-today]");
+    if (el && strip.current) strip.current.scrollLeft = el.offsetLeft - strip.current.offsetLeft - 8;
+  }, []);
+  const nudge = (dir: number) => {
+    const el = strip.current;
+    const col = el?.querySelector<HTMLElement>("[data-day]");
+    if (el && col) el.scrollBy({ left: dir * (col.offsetWidth + 12), behavior: "smooth" });
+  };
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -417,12 +429,16 @@ function Week() {
             </span>
           ))}
         </div>
+        <span className="flex gap-1">
+          <IconButton icon={ChevronLeft} label="Earlier days" onClick={() => nudge(-1)} />
+          <IconButton icon={ChevronRight} label="Later days" onClick={() => nudge(1)} />
+        </span>
         <Button variant="primary" icon={Plus} className="!rounded-full" onClick={() => setEditing(null)}>
           Add activity
         </Button>
       </div>
-      <div className="overflow-x-auto pb-2">
-        <div className="grid min-w-[820px] grid-cols-7 gap-2">
+      <div ref={strip} className="snap-x snap-mandatory overflow-x-auto scroll-smooth pb-3">
+        <div className="flex gap-3">
           {DAYS.map((d, i) => {
             const date = toDateStr(addDays(monday, i));
             const list = [
@@ -436,22 +452,26 @@ function Week() {
             ].sort((a, b) => a.time.localeCompare(b.time));
             const isToday = date === t;
             return (
-              <Card key={d} className={cx("min-h-[420px] p-2", isToday && "ring-2 ring-accent/50")}>
-                <div className="mb-2 flex items-baseline justify-between px-1">
-                  <span className={cx("font-display text-lg", isToday && "text-accent")}>{d}</span>
-                  <span className="text-xs text-muted">{addDays(monday, i).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>
+              <div key={d} data-day="" {...(isToday ? { "data-today": "" } : {})} className="w-[300px] shrink-0 snap-start sm:w-[320px]">
+              <Card className={cx("h-full min-h-[560px] p-3", isToday && "ring-2 ring-accent/50")}>
+                <div className="mb-3 flex items-baseline justify-between px-1">
+                  <span className={cx("font-display text-2xl", isToday && "text-accent")}>
+                    {WEEKDAY_NAMES[i]}
+                    {isToday && <span className="ml-2 align-middle text-xs font-sans font-semibold tracking-wide uppercase">Today</span>}
+                  </span>
+                  <span className="text-sm text-muted">{addDays(monday, i).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>
                 </div>
-                {!list.length && <p className="px-1 py-4 text-center text-xs text-muted">Free day</p>}
-                <div className="space-y-1.5">
+                {!list.length && <p className="px-1 py-6 text-center text-sm text-muted">Free day</p>}
+                <div className="space-y-2">
                   {list.map((x) => {
                     const body = (
                       <>
-                        <span className="tabular block text-[11px] text-muted">
+                        <span className="tabular block text-[12.5px] text-muted">
                           {fmtTime(x.time)}
                           {x.end ? ` – ${fmtTime(x.end)}` : ""}
                         </span>
-                        <span className="block text-[13px] leading-snug font-medium">{x.title}</span>
-                        <span className="block text-[11px] text-muted">
+                        <span className="block text-[15px] leading-snug font-medium">{x.title}</span>
+                        <span className="block text-[12px] text-muted">
                           {x.sub}
                           {x.once && " · once"}
                         </span>
@@ -462,19 +482,20 @@ function Week() {
                         key={x.k}
                         type="button"
                         onClick={() => setEditing(x.row)}
-                        className="anim-item block w-full rounded-xl border-l-[3px] px-2.5 py-2 text-left transition-transform hover:translate-x-0.5"
+                        className="anim-item block w-full rounded-xl border-l-4 px-3 py-2.5 text-left transition-transform hover:translate-x-0.5"
                         style={{ ...wash(x.color), borderColor: x.color }}
                       >
                         {body}
                       </button>
                     ) : (
-                      <div key={x.k} className="rounded-xl border border-dashed px-2.5 py-2" style={{ borderColor: x.color }}>
+                      <div key={x.k} className="rounded-xl border border-dashed px-3 py-2.5" style={{ borderColor: x.color }}>
                         {body}
                       </div>
                     );
                   })}
                 </div>
               </Card>
+              </div>
             );
           })}
         </div>

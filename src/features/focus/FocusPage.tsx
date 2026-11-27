@@ -161,7 +161,7 @@ function Setup() {
         {s.kind === "academic" && module && (
           <section>
             <Heading n={3}>What will you grow?</Heading>
-            <GrowPicker module={module} value={s.plantId ?? null} onChange={(plantId) => set({ plantId })} />
+            <GrowPicker value={s.plantId ?? null} onChange={(plantId) => set({ plantId })} />
           </section>
         )}
 
@@ -179,17 +179,14 @@ function Setup() {
 }
 
 /** Step 3 of the set-up: the garden flower this session grows, or a new one to plant. */
-function GrowPicker({ module, value, onChange }: { module: Row; value: number | null; onChange: (id: number | null) => void }) {
+function GrowPicker({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
   const mutate = useMutate();
   const thumbs = useThumbs();
   const plants = useRows("garden_plants", undefined, "queue, id").rows;
   const decor = useRows("garden_decor", undefined, "id").rows;
   const [planting, setPlanting] = useState(false);
-  const [onlyThis, setOnlyThis] = useState(true);
-  // Flowers this module's study can grow: its own first, then any-study ones, in line order.
-  const options = plants
-    .filter((p) => !p.grown_at && (p.module_id == null || p.module_id === module.id))
-    .sort((a, b) => Number(a.module_id == null) - Number(b.module_id == null) || a.queue - b.queue || a.id - b.id);
+  // Flowers still growing, in line order.
+  const options = plants.filter((p) => !p.grown_at);
   const chosen = options.find((p) => p.id === value) ?? options[0] ?? null;
   useEffect(() => {
     if ((chosen?.id ?? null) !== value) onChange(chosen?.id ?? null);
@@ -201,7 +198,7 @@ function GrowPicker({ module, value, onChange }: { module: Row; value: number | 
   const plant = async (sp: Species) => {
     if (bed == null) return;
     const maxQ = plants.reduce((q, p) => Math.max(q, Number(p.queue)), 0);
-    const row = await mutate(db.insert("garden_plants", { species: sp.id, land, plot: bed, need_minutes: sp.minutes, queue: maxQ + 1, module_id: onlyThis ? module.id : null }));
+    const row = await mutate(db.insert("garden_plants", { species: sp.id, land, plot: bed, need_minutes: sp.minutes, queue: maxQ + 1 }));
     onChange(row.id as number);
     setPlanting(false);
     toast.success(`${sp.name} planted in bed ${bed + 1}`);
@@ -227,7 +224,9 @@ function GrowPicker({ module, value, onChange }: { module: Row; value: number | 
               <Thumb src={thumbs[`plant:${p.species}`]} size={44} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{sp?.name}</span>
-                <span className="block text-[11px] text-muted">{p.module_id == null ? "Any study" : `${module.code} only`}</span>
+                <span className="block text-[11px] text-muted">
+                  {hm(Number(p.minutes))} of {hm(Number(p.need_minutes))}
+                </span>
                 <Progress value={Number(p.minutes)} max={Number(p.need_minutes)} className="mt-1" />
               </span>
             </button>
@@ -256,10 +255,6 @@ function GrowPicker({ module, value, onChange }: { module: Row; value: number | 
                 <span className="text-muted">
                   Goes in bed {bed + 1} of {landName(land)}
                 </span>
-                <label className="ml-auto flex items-center gap-2">
-                  <input type="checkbox" checked={onlyThis} onChange={(e) => setOnlyThis(e.target.checked)} className="accent-[var(--accent)]" />
-                  Only grows with {module.code}
-                </label>
               </div>
               <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-6">
                 {SPECIES.map((sp) => {
@@ -630,9 +625,8 @@ function GardenPanel() {
   const run = useFocusRun();
   const now = useTick(!!run && run.endedAt == null && run.kind === "academic");
   const queue = useRows("garden_plants", { grown_at: { null: true } }, "queue, id").rows;
-  // A flower for the module you're focusing on grows first; otherwise one for any study.
-  const mod = run?.kind === "academic" ? run.moduleId : null;
-  const growing = (mod != null ? (queue.find((p) => p.id === run?.plantId) ?? queue.find((p) => p.module_id === mod)) : undefined) ?? queue.find((p) => p.module_id == null);
+  // The flower picked for the running session, else the one first in line.
+  const growing = (run?.kind === "academic" ? queue.find((p) => p.id === run.plantId) : undefined) ?? queue[0];
   const live = run && run.kind === "academic" && run.moduleId ? Math.floor(focusMs(run, now) / 60_000) : 0;
   const s = growing ? speciesById.get(growing.species) : undefined;
   const thumbs = useThumbs();
