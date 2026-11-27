@@ -69,7 +69,6 @@ export function standing(components: Row[]): Standing {
 export const neededFor = (s: Standing, mark: number) => (s.remaining > 0 ? ((mark - s.secured) / s.remaining) * 100 : null);
 
 const GOAL_FACTOR: Record<string, number> = { AD: 1.6, "A+": 1.45, A: 1.3, "B+": 1.15, B: 1, "C+": 0.9, C: 0.8, "D+": 0.75, D: 0.7 };
-const DIFFICULTY_FACTOR: Record<number, number> = { 1: 0.8, 2: 1, 3: 1.25 };
 export const HOURS_PER_CREDIT = 0.75;
 export const ASSUMED_CREDITS = 4;
 
@@ -81,7 +80,7 @@ export interface StudyNeed {
 
 /**
  * How much to study per week. A transparent rule of thumb, not NP guidance:
- * credits × 45 min × goal × difficulty × how far behind × how close the next exam is.
+ * credits × 45 min × goal × how far behind × how close the next exam is.
  */
 export function studyNeed(module: Row, s: Standing, cut: Record<string, number>, daysToExam: number | null): StudyNeed {
   const target = module.target_grade as string | null;
@@ -94,8 +93,6 @@ export function studyNeed(module: Row, s: Standing, cut: Record<string, number>,
     if (Math.abs(factor - 1) > 0.001) why.push(`${label}: ×${factor.toFixed(2)}`);
   };
   times(GOAL_FACTOR[target] ?? 1, `aiming for ${target}`);
-  const difficulty = Number(module.difficulty) || 2;
-  times(DIFFICULTY_FACTOR[difficulty] ?? 1, difficulty === 1 ? "easy for you" : "hard for you");
   if (s.average !== null) {
     const gap = cut[target] - s.average;
     if (gap > 0) times(1 + Math.min(0.4, gap * 0.02), `${Math.round(gap)} marks behind target`);

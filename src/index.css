@@ -13,6 +13,15 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Module "theme colours": they follow whichever theme is selected. */
+html {
+  --theme-1: var(--accent);
+  --theme-2: color-mix(in srgb, var(--accent) 55%, var(--blob-1));
+  --theme-3: color-mix(in srgb, var(--accent) 50%, var(--blob-2));
+  --theme-4: color-mix(in srgb, var(--accent) 45%, var(--blob-3));
+  --theme-5: color-mix(in srgb, var(--accent) 35%, var(--blob-4));
+}
+
 /* ---- Pastel: Cotton Candy (default) ---- */
 html,
 html[data-palette="cotton"] {

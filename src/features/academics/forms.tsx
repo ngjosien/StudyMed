@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { FormModal, type FormState } from "../../components/form";
 import type { Row } from "../../lib/api";
 import { useRows } from "../../lib/hooks";
-import { GRADE_NAMES, TARGETS } from "../../lib/grades";
 import { fmtDateTime, today } from "../../lib/dates";
 import { EXAM_FORMATS, HOMEWORK_STATUS, HOMEWORK_TYPES, KIND_NAMES, STATUS_COLOR, useModules } from "./common";
 import { useEventMatchOptions } from "./hours";
@@ -16,29 +15,15 @@ export function ModuleForm({ state }: { state: FormState }) {
       title={state.record ? "Edit module" : "New module"}
       table="modules"
       record={state.record}
-      defaults={{ color: "#f4a6c0", difficulty: 2, ...state.defaults }}
+      defaults={{ color: "var(--theme-1)", ...state.defaults }}
       fields={[
         { key: "name", label: "Module name", type: "text", required: true, placeholder: "Human Biosciences 2" },
         { key: "code", label: "Module code", type: "text", required: true, placeholder: "HBS2" },
         { key: "credits", label: "Credit units", type: "number", placeholder: "4" },
         { key: "term", label: "Semester", type: "text", placeholder: "Year 1 Sem 2", full: true, hint: "Used for your semester GPA" },
-        { key: "target_grade", label: "Grade I'm aiming for", type: "select", options: TARGETS },
-        {
-          key: "difficulty",
-          label: "How hard it feels",
-          type: "select",
-          numeric: true,
-          required: true,
-          options: [
-            { value: 1, label: "Easy" },
-            { value: 2, label: "Okay" },
-            { value: 3, label: "Hard" },
-          ],
-        },
-        { key: "color", label: "Colour", type: "color" },
+        { key: "color", label: "Colour", type: "color", hint: "Theme colours change with your theme" },
         { key: "lecturer", label: "Lecturer", type: "text", more: true },
         { key: "lecturer_contact", label: "Contact", type: "text", placeholder: "Email or office", more: true },
-        { key: "final_grade", label: "Final grade, once released", type: "select", options: GRADE_NAMES, more: true },
         { key: "syllabus_md", label: "Syllabus", type: "markdown", more: true },
         { key: "archived", label: "Finished module", type: "checkbox", placeholder: "Hide from active lists", more: true },
       ]}

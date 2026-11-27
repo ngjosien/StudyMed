@@ -536,9 +536,25 @@ export function Rating({ value, onChange, size = 16 }: { value: number; onChange
 /** Pastel-friendly swatches for colour tags. */
 export const SWATCHES = ["#f4a6c0", "#c3a6f4", "#a6c8f4", "#a6e3d0", "#f4d8a6", "#f4b8a6", "#b8c0cc", "#8d6fd6", "#4a86cf", "#3e9a77", "#d2648f", "#b98a14"];
 
+/** Colours that follow the selected theme (defined per theme in index.css). */
+export const THEME_COLORS = ["var(--theme-1)", "var(--theme-2)", "var(--theme-3)", "var(--theme-4)", "var(--theme-5)"];
+
 export function ColorPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-0.5 text-[11px] font-medium text-muted">Theme</span>
+      {THEME_COLORS.map((c, i) => (
+        <button
+          type="button"
+          key={c}
+          onClick={() => onChange(c)}
+          aria-label={`Theme colour ${i + 1}`}
+          title="Changes with your theme"
+          className={cx("h-6 w-6 rounded-full border-2 hover:scale-110", value === c ? "border-fg" : "border-transparent")}
+          style={{ background: c }}
+        />
+      ))}
+      <span className="mx-1 h-5 w-px bg-line" />
       {SWATCHES.map((c) => (
         <button
           type="button"
@@ -549,7 +565,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (v: 
           style={{ background: c }}
         />
       ))}
-      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent" />
+      <input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#8d6fd6"} onChange={(e) => onChange(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent" />
     </div>
   );
 }
