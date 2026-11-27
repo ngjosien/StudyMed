@@ -1,4 +1,5 @@
-// A week laid out as seven day columns (Mon–Sun), used by To-Dos and Events; and
+// A week laid out as seven big day columns (Mon–Sun) that scroll sideways, used by
+// To-Dos and Events; and
 // WeeksStrip, one column per week, used by Homework and Exams.
 // Overdue items sit in a strip above the week, undated ones in a strip below.
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -29,6 +30,7 @@ export function WeekBoard({
   noDateLabel?: string;
 }) {
   const [start, setStart] = useState(() => startOfWeek(new Date()));
+  const strip = useRef<HTMLDivElement>(null);
   const days = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(start, i)));
   const t = today();
   const thisWeek = days.includes(t);
@@ -39,9 +41,21 @@ export function WeekBoard({
   const overdue = thisWeek && isOpen ? rows.filter((r) => isOpen(r) && day(r) && day(r)! < days[0]) : [];
   const undated = rows.filter((r) => !day(r) && (!isOpen || isOpen(r)));
 
+  // Open on today in this week, and at Monday in any other week.
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const col = el.querySelector<HTMLElement>("[data-today]");
+    el.scrollTo({ left: col ? Math.max(0, col.offsetLeft - el.offsetLeft - 8) : 0, behavior: "auto" });
+  }, [days[0]]);
+  const nudge = (dir: number) => {
+    const col = strip.current?.querySelector<HTMLElement>("[data-day]");
+    if (strip.current && col) strip.current.scrollBy({ left: dir * (col.offsetWidth + 12), behavior: "smooth" });
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         <IconButton icon={ChevronLeft} label="Previous week" onClick={() => setStart(addDays(start, -7))} />
         <button type="button" onClick={() => setStart(startOfWeek(new Date()))} className="font-display px-1 text-lg hover:text-accent">
           {fmtDateShort(days[0])} – {fmtDateShort(days[6])}
@@ -52,12 +66,15 @@ export function WeekBoard({
             This week
           </Button>
         )}
+        <span className="flex-1" />
+        <IconButton icon={ChevronLeft} label="Earlier days" onClick={() => nudge(-1)} />
+        <IconButton icon={ChevronRight} label="Later days" onClick={() => nudge(1)} />
       </div>
 
       {overdue.length > 0 && (
         <div className="rounded-[16px] border border-danger/30 bg-danger/5 p-2.5">
           <div className="eyebrow mb-1.5 !text-[10px] !text-danger">Overdue · {overdue.length}</div>
-          <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
+          <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
             {overdue.map((r) => (
               <div key={r.id}>{render(r)}</div>
             ))}
@@ -65,22 +82,32 @@ export function WeekBoard({
         </div>
       )}
 
-      <div className="overflow-x-auto pb-1">
-        <div className="grid min-w-[820px] grid-cols-7 gap-1.5">
+      <div ref={strip} className="snap-x snap-mandatory overflow-x-auto scroll-smooth pb-3">
+        <div className="flex gap-3">
           {days.map((d) => {
             const items = rows.filter((r) => day(r) === d);
             const isToday = d === t;
             const date = new Date(`${d}T12:00`);
             return (
-              <section key={d} className={cx("flex min-h-56 flex-col rounded-[16px] p-1.5", isToday ? "bg-accent-soft ring-1 ring-accent/30" : "bg-surface-2/50", d < t && "opacity-80")}>
-                <header className="flex items-baseline gap-1.5 px-1.5 pt-1 pb-2">
-                  <span className={cx("eyebrow !text-[10px]", isToday && "!text-accent")}>{date.toLocaleDateString(undefined, { weekday: "short" })}</span>
-                  <span className={cx("font-display tabular text-xl leading-none", isToday && "text-accent")}>{date.getDate()}</span>
-                  <span className="flex-1" />
-                  {items.length > 0 && <span className="text-[10px] text-muted">{items.length}</span>}
-                  {onAdd && <IconButton icon={Plus} label={`${addLabel} on ${fmtDateShort(d)}`} onClick={() => onAdd(d)} className="!h-6 !w-6" />}
+              <section
+                key={d}
+                data-day=""
+                {...(isToday ? { "data-today": "" } : {})}
+                className={cx("flex min-h-[480px] w-[280px] shrink-0 snap-start flex-col rounded-[18px] p-3 sm:w-[300px]", isToday ? "bg-accent-soft ring-2 ring-accent/40" : "bg-surface-2/50", d < t && "opacity-80")}
+              >
+                <header className="mb-3 flex items-start gap-2 px-1">
+                  <div className="min-w-0 flex-1">
+                    <div className={cx("font-display text-2xl leading-tight", isToday && "text-accent")}>{date.toLocaleDateString(undefined, { weekday: "long" })}</div>
+                    <div className="text-sm text-muted">
+                      {isToday ? "Today · " : ""}
+                      {date.toLocaleDateString(undefined, { day: "numeric", month: "long" })}
+                    </div>
+                  </div>
+                  {items.length > 0 && <span className="mt-1 rounded-full bg-surface-solid/70 px-2 py-0.5 text-xs font-semibold">{items.length}</span>}
+                  {onAdd && <IconButton icon={Plus} label={`${addLabel} on ${fmtDateShort(d)}`} onClick={() => onAdd(d)} />}
                 </header>
-                <div className="flex flex-1 flex-col gap-1.5">
+                {!items.length && <p className="px-1 py-6 text-center text-sm text-muted">Nothing yet</p>}
+                <div className="flex flex-col gap-2">
                   {items.map((r) => (
                     <div key={r.id}>{render(r)}</div>
                   ))}
@@ -96,7 +123,7 @@ export function WeekBoard({
           <div className="eyebrow mb-1.5 !text-[10px]">
             {noDateLabel} · {undated.length}
           </div>
-          <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
+          <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
             {undated.map((r) => (
               <div key={r.id}>{render(r)}</div>
             ))}

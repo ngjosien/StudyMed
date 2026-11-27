@@ -23,6 +23,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0013_exam_weeks.sql"),
     include_str!("../migrations/0014_class_changes_exam_grades.sql"),
     include_str!("../migrations/0015_focus_todo.sql"),
+    include_str!("../migrations/0016_no_garden_decor.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);
@@ -339,6 +340,7 @@ mod tests {
              INSERT INTO garden_plants(id, species, plot, need_minutes, queue, planted_at) VALUES
                (1, 'cherry', 14, 900, 0, '2026-11-20 10:00'), (2, 'daisy', 3, 90, 1, '2026-11-21 10:00');
              INSERT INTO garden_decor(id, kind, plot, created_at) VALUES (1, 'bench', 9, '2026-11-22 10:00');
+             INSERT INTO beats(amount, reason, source_type, source_id) VALUES (-40, 'Garden · Bench', 'garden', 1), (5, 'Focus', 'focus', 1);
              INSERT INTO study_logs(id, module_id, date, minutes) VALUES (1, 1, '2026-11-26', 50);",
         )
         .unwrap();
@@ -347,7 +349,9 @@ mod tests {
         let n = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!(s("SELECT species || ':' || plot || ':' || land FROM garden_plants WHERE id = 1"), "bells:1:2026-11");
         assert_eq!(s("SELECT species || ':' || plot FROM garden_plants WHERE id = 2"), "cosmos:0");
-        assert_eq!(s("SELECT plot || ':' || land FROM garden_decor"), "41:2026-11");
+        // Decorations are gone, and the laurels spent on them given back.
+        assert_eq!(n("SELECT count(*) FROM garden_decor"), 0);
+        assert_eq!(n("SELECT coalesce(sum(amount), 0) FROM beats"), 5);
         // Minutes from before the upgrade are still taken back when their log is deleted.
         assert_eq!(n("SELECT minutes FROM garden_plants WHERE id = 1"), 50);
         conn.execute_batch("DELETE FROM study_logs WHERE id = 1;").unwrap();

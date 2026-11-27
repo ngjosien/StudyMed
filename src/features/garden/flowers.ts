@@ -330,7 +330,7 @@ function bellStem(r: () => number, h: number, color: string, open: boolean, dir:
 }
 
 /** Merges the parts into one mesh per material. */
-function bake(root: THREE.Group) {
+export function bake(root: THREE.Group) {
   root.updateMatrixWorld(true);
   const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
   root.traverse((o) => {

@@ -1,20 +1,21 @@
-// A month's garden land in 3D, in an original cozy style: a raised grassy terrace
-// at the back with a little waterfall, a stream with sandy banks and a wooden
-// bridge, a beach on calm water, puffy round trees, bushes, wild flowers and rocks,
-// soft sunlight and drifting clouds. One soil bed per day of the month, with grass
-// at the front for decorations. Flowers sway; the one growing right now sparkles;
+// A month's garden land in 3D, in an original cozy style: a soft grassy hill at
+// the back with a stream tumbling down it, a river with sandy banks and a wooden
+// bridge, puffy round trees, bushes, wild flowers and rocks, soft sunlight and
+// drifting clouds. One soil bed per day of the month, with lawn on the cells left
+// over. Flowers sway; the one growing right now sparkles;
 // bloomed flowers with laurels to collect have a golden token bobbing over them.
-// The world curves gently away from where you look, like a small planet, under a
-// warm autumn sky: golden light, peach clouds, autumn trees and drifting leaves.
+// The garden sits on a little planet that curves away from where you look: a thick
+// forest of puffy autumn trees all round, a river winding off to the horizon, under a
+// warm autumn sky with peach clouds along the horizon and drifting leaves.
 // Drag to turn, scroll to zoom, click a bed to pick it.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { TessellateModifier } from "three/examples/jsm/modifiers/TessellateModifier.js";
 import { disposeObject, ell, mat, rng, TOON_RAMP } from "./models";
-import { bushBall, buildGardenDecor, edgeTree, rock, tuft, wildflowers, type TreeKind } from "./cozy";
-import { buildFlower } from "./flowers";
-import { DECOR, LAND_COLS, LAND_ROWS, SPECIES } from "./catalog";
+import { bushBall, buildGardenDecor, edgeTree, fallenLeaf, forestMesh, meadowFlowers, rock, tuft, wildflowers, type ForestSpot, type TreeKind } from "./cozy";
+import { isMobile } from "../../lib/platform";
+import { bake, buildFlower } from "./flowers";
+import { LAND_COLS, LAND_ROWS, SPECIES } from "./catalog";
 
 export interface Cell {
   key: string; // changes whenever the model must be rebuilt
@@ -33,7 +34,31 @@ export interface Cell {
 const T = 1; // plot size
 const SIDE = 1.5; // grass between the plots and the island's sides / front
 const BACK = 2.6; // deeper at the back, for the terrace
-const TERRACE_H = 0.55;
+/** How high the grassy hill behind the beds rises. */
+const HILL = 0.75;
+
+/** Smooth value noise (0..1) for gentle hills. */
+function hash2(i: number, j: number) {
+  const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+  return v - Math.floor(v);
+}
+function vnoise(x: number, z: number) {
+  const i = Math.floor(x);
+  const j = Math.floor(z);
+  const fx = x - i;
+  const fz = z - j;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const a = hash2(i, j);
+  const b = hash2(i + 1, j);
+  const c = hash2(i, j + 1);
+  const d = hash2(i + 1, j + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const smooth = (a: number, b: number, v: number) => {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 /** How much the ground drops with distance (squared) from the point you look at. */
 const CURVE_AMOUNT = 0.01;
@@ -59,12 +84,6 @@ gl_Position = projectionMatrix * mvPosition;`,
   };
   m.customProgramCacheKey = () => "curved";
   m.needsUpdate = true;
-}
-/** Splits a big shape into small triangles so it bends smoothly with the world's curve. */
-function fine(g: THREE.BufferGeometry) {
-  const out = new TessellateModifier(0.45, 10).modify(g);
-  g.dispose();
-  return out;
 }
 function curveObject(o: THREE.Object3D) {
   o.traverse((c) => {
@@ -115,22 +134,142 @@ const grassTexture = () =>
     }
   });
 
-/** Cliff faces: warm earth in soft horizontal layers. */
-const cliffTexture = () =>
-  canvasTex(256, 256, (g) => {
-    const bands = ["#c08a5c", "#b47d51", "#a87049", "#b98457", "#9e6843"];
-    for (let i = 0; i < 16; i++) {
-      g.fillStyle = bands[i % bands.length];
-      g.fillRect(0, i * 16, 256, 16);
-    }
-    const r = rng(5);
-    for (let i = 0; i < 60; i++) {
-      g.fillStyle = r() < 0.5 ? "rgba(255,240,220,0.12)" : "rgba(60,30,10,0.1)";
+/** A river seen from above: pale shallows at the edges, deep blue down the middle, streaks of light. */
+const riverTexture = () =>
+  canvasTex(128, 256, (g) => {
+    const across = g.createLinearGradient(0, 0, 128, 0);
+    across.addColorStop(0, "#bfe6dc");
+    across.addColorStop(0.14, "#86cbd8");
+    across.addColorStop(0.35, "#4f9fc8");
+    across.addColorStop(0.5, "#3f8fbf");
+    across.addColorStop(0.65, "#4f9fc8");
+    across.addColorStop(0.86, "#86cbd8");
+    across.addColorStop(1, "#bfe6dc");
+    g.fillStyle = across;
+    g.fillRect(0, 0, 128, 256);
+    const r = rng(12);
+    for (let i = 0; i < 70; i++) {
+      const x = 14 + r() * 100;
+      const mid = 1 - Math.abs(x - 64) / 64;
+      g.fillStyle = `rgba(255,255,255,${0.08 + r() * 0.22 * mid})`;
       g.beginPath();
-      g.ellipse(r() * 256, r() * 256, 10 + r() * 20, 3 + r() * 4, 0, 0, Math.PI * 2);
+      g.ellipse(x, r() * 256, 1 + r() * 2, 6 + r() * 16, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    // Foam lines where the water meets the banks.
+    for (const x of [5, 123])
+      for (let y = 0; y < 256; y += 6 + r() * 8) {
+        g.fillStyle = `rgba(255,255,255,${0.35 + r() * 0.3})`;
+        g.beginPath();
+        g.ellipse(x + (r() - 0.5) * 4, y, 2 + r() * 2, 3 + r() * 5, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+  });
+
+/** Sandy river banks with pebbles. */
+const bankTexture = () =>
+  canvasTex(128, 128, (g) => {
+    g.fillStyle = "#d9c493";
+    g.fillRect(0, 0, 128, 128);
+    const r = rng(14);
+    for (let i = 0; i < 160; i++) {
+      const k = r();
+      g.fillStyle = k < 0.4 ? "rgba(176,150,104,0.55)" : k < 0.75 ? "rgba(240,228,196,0.6)" : "rgba(150,140,128,0.5)";
+      g.beginPath();
+      g.ellipse(r() * 128, r() * 128, 1 + r() * 3, 1 + r() * 2.2, r() * 3, 0, Math.PI * 2);
       g.fill();
     }
   });
+
+interface RiverPoint {
+  /** Height of the water here, when it isn't the ribbon's own level (down a slope). */
+  y?: number;
+  x: number;
+  z: number;
+  w: number;
+  nx: number;
+  nz: number;
+  d: number;
+}
+
+/** A flat strip along the river path, `extra` wider than the water, u across and v along. */
+function ribbon(pts: RiverPoint[], extra: number, y: number, across: number, tile: number) {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const nor: number[] = [];
+  const idx: number[] = [];
+  const cols = across + 1;
+  pts.forEach((p, i) => {
+    const w = p.w + extra;
+    for (let j = 0; j <= across; j++) {
+      const sd = j / across - 0.5;
+      // A gentle wobble on the outer edges so the banks don't look ruled.
+      const wob = extra > 0 && (j === 0 || j === across) ? Math.sin(p.d * 2.3 + j * 1.7) * 0.07 + Math.sin(p.d * 5.1 + j) * 0.035 : 0;
+      const o = sd * w + Math.sign(sd) * wob;
+      pos.push(p.x + p.nx * o, p.y ?? y, p.z + p.nz * o);
+      uv.push(j / across, p.d / tile);
+      nor.push(0, 1, 0);
+    }
+    if (i > 0)
+      for (let j = 0; j < across; j++) {
+        const a = (i - 1) * cols + j;
+        const b = a + 1;
+        const c = a + cols;
+        const d = c + 1;
+        idx.push(a, b, c, b, d, c);
+      }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/**
+ * A flat disc with a wobbly edge (a pond or its bank), divided into rings so it bends
+ * with the round world, shaded from `inner` in the middle to `outer` at the edge.
+ */
+function blobDisc(edge: (a: number) => number, inner = "#ffffff", outer = "#ffffff", rings = 10, segs = 56) {
+  const ci = new THREE.Color(inner);
+  const co = new THREE.Color(outer);
+  const pos = [0, 0, 0];
+  const nor = [0, 1, 0];
+  const col = [ci.r, ci.g, ci.b];
+  const uv = [0, 0];
+  for (let k = 1; k <= rings; k++) {
+    const f = k / rings;
+    const c = ci.clone().lerp(co, f * f);
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      const rr = edge(a) * f;
+      const x = Math.cos(a) * rr;
+      const z = Math.sin(a) * rr;
+      pos.push(x, 0, z);
+      nor.push(0, 1, 0);
+      col.push(c.r, c.g, c.b);
+      uv.push(x / 1.6, z / 1.6);
+    }
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < segs; i++) idx.push(0, 1 + ((i + 1) % segs), 1 + i);
+  for (let k = 1; k < rings; k++)
+    for (let i = 0; i < segs; i++) {
+      const i0 = 1 + (k - 1) * segs + i;
+      const i1 = 1 + (k - 1) * segs + ((i + 1) % segs);
+      const o0 = i0 + segs;
+      const o1 = i1 + segs;
+      idx.push(i0, i1, o0, i1, o1, o0);
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
 
 /** Moving water: soft light streaks that scroll along. */
 const waterTexture = () =>
@@ -148,8 +287,9 @@ const waterTexture = () =>
 
 function cloud(r: () => number) {
   const g = new THREE.Group();
-  const top = mat("#fff6ec", { emissive: "#fff1e0", ei: 0.45 });
-  const under = mat("#ffd9c2", { emissive: "#ffc9a8", ei: 0.3 });
+  const top = mat("#ffffff", { emissive: "#fff6ee", ei: 0.6 });
+  const under = mat("#ffe9dc", { emissive: "#ffdcc6", ei: 0.4 });
+  (top as THREE.MeshToonMaterial).fog = (under as THREE.MeshToonMaterial).fog = false;
   const n = 5 + Math.floor(r() * 4);
   for (let i = 0; i < n; i++) {
     const s = 0.7 + r() * 0.9;
@@ -183,7 +323,6 @@ export class GardenScene {
   private bounds = { w: 10, d: 10, cz: 0 };
   private clouds: THREE.Group[] = [];
   private sways: THREE.Object3D[] = [];
-  private water!: THREE.Mesh;
   private raf = 0;
   private epoch = thumbsEpoch;
   private clock = new THREE.Clock();
@@ -198,9 +337,10 @@ export class GardenScene {
   private ray = new THREE.Raycaster();
   private alive = true;
   private grassTex = grassTexture();
-  private cliffTex = cliffTexture();
   private streamTex = waterTexture();
   private fallTex = waterTexture();
+  private riverTex = riverTexture();
+  private bankTex = bankTexture();
   readonly ready = Promise.resolve();
 
   constructor(
@@ -220,7 +360,7 @@ export class GardenScene {
 
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
     this.camera.position.set(5.4, 7.2, 8.4);
-    this.scene.fog = new THREE.Fog("#ecdccb", 28, 80);
+    this.scene.fog = new THREE.Fog("#f0d9c2", 22, 62);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
@@ -270,11 +410,17 @@ export class GardenScene {
       this.scene.add(s);
     }
     const cr = rng(3);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 22; i++) {
       const c = cloud(cr);
-      const far = i % 3 === 0;
-      c.position.set(-22 + i * 5.5 + cr() * 3, (far ? 4 : 6.5) + cr() * 3, (far ? -24 : -12) - cr() * 8);
-      c.scale.setScalar(far ? 1.6 : 1 + cr() * 0.4);
+      const a = (i / 22) * Math.PI * 2 + cr() * 0.25;
+      const rad = 44 + cr() * 12;
+      c.userData.a = a;
+      c.userData.rad = rad;
+      // The ground drops away fast, so the sky you see is well below the camera:
+      // these heights sit them between the far treetops and the top of the view.
+      c.position.set(Math.cos(a) * rad, -10 + cr() * 3.5, Math.sin(a) * rad);
+      c.scale.setScalar(0.6 + cr() * 0.45);
+      c.lookAt(0, c.position.y, 0);
       c.userData.speed = 0.15 + cr() * 0.15;
       this.clouds.push(c);
       this.scene.add(c);
@@ -327,7 +473,7 @@ export class GardenScene {
     const r = rng(7 + this.rows);
     const toon = (opts: THREE.MeshToonMaterialParameters) => new THREE.MeshToonMaterial({ gradientMap: TOON_RAMP, ...opts });
     const add = (o: THREE.Object3D, x: number, y: number, z: number, sway = false) => {
-      o.position.set(x, y, z);
+      o.position.set(x, y + heightAt(x, z), z);
       o.rotation.y = r() * Math.PI * 2;
       this.island.add(o);
       if (sway) {
@@ -337,85 +483,236 @@ export class GardenScene {
       return o;
     };
 
-    // Sea, shallows and a sandy beach all round.
-    // Finely divided so it can curve smoothly away to the horizon.
-    const water = new THREE.Mesh(new THREE.RingGeometry(0, Math.max(W, D) * 6, 96, 56), mat("#6cc2e0", { rough: 0.2 }));
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(0, -0.48, cz);
-    water.receiveShadow = true;
-    this.water = water;
-    this.island.add(water);
-    const shallows = new THREE.Mesh(new RoundedBoxGeometry(W + 1.8, 0.04, D + 1.8, 6, 0.02), mat("#a2e2ef", { rough: 0.25, opacity: 0.75 }));
-    shallows.position.set(0, -0.46, cz);
-    (shallows as THREE.Mesh).geometry = fine(shallows.geometry);
-    this.island.add(shallows);
-    const sand = new THREE.Mesh(new RoundedBoxGeometry(W + 1.0, 0.34, D + 1.0, 8, 0.17), toon({ color: "#f3dfb2" }));
-    sand.position.set(0, -0.37, cz);
-    (sand as THREE.Mesh).geometry = fine(sand.geometry);
-    sand.receiveShadow = true;
-    this.island.add(sand);
-
-    // The main island: earth sides under a painted grass top.
-    const cliffMat = toon({ map: this.cliffTex });
-    this.cliffTex.repeat.set(W / 2, 1);
-    const earth = new THREE.Mesh(new RoundedBoxGeometry(W, 0.5, D, 8, 0.24), cliffMat);
-    earth.position.set(0, -0.25, cz);
-    (earth as THREE.Mesh).geometry = fine(earth.geometry);
-    earth.receiveShadow = true;
-    this.island.add(earth);
-    const grassMat = toon({ map: this.grassTex });
-    this.grassTex.repeat.set(W / 3, D / 3);
-    const grass = new THREE.Mesh(new RoundedBoxGeometry(W + 0.06, 0.2, D + 0.06, 8, 0.1), grassMat);
-    grass.position.set(0, -0.02, cz);
-    (grass as THREE.Mesh).geometry = fine(grass.geometry);
-    grass.receiveShadow = true;
-    this.island.add(grass);
-
-    // A raised terrace along the back, with a grass cap and soft cliff sides.
+    // ---- The land: one continuous grassy world. Flat where the garden is, a soft hill behind
+    // the beds, gentle rolling hills further out, and hollows where the river and ponds lie.
+    const lite = isMobile;
+    const sx = -halfW - SIDE / 2 - 0.05;
     const tD = BACK - 0.6;
     const tz = back + tD / 2 + 0.05;
-    const terrace = new THREE.Mesh(new RoundedBoxGeometry(W - 0.1, TERRACE_H, tD, 8, 0.2), cliffMat);
-    terrace.position.set(0, TERRACE_H / 2 - 0.02, tz);
-    (terrace as THREE.Mesh).geometry = fine(terrace.geometry);
-    terrace.castShadow = true;
-    terrace.receiveShadow = true;
-    this.island.add(terrace);
-    const cap = new THREE.Mesh(new RoundedBoxGeometry(W - 0.02, 0.14, tD + 0.08, 8, 0.07), grassMat);
-    cap.position.set(0, TERRACE_H + 0.02, tz);
-    (cap as THREE.Mesh).geometry = fine(cap.geometry);
-    cap.receiveShadow = true;
-    this.island.add(cap);
-    const topY = TERRACE_H + 0.09;
+    const poolZ = tz + tD / 2 + 0.25;
+    const boxDist = (x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x) - W / 2), Math.max(0, back - z, z - front));
 
-    // A stream down the left side, from a little waterfall off the terrace to the sea.
-    const sx = -halfW - SIDE / 2 - 0.05;
-    const streamMat = new THREE.MeshStandardMaterial({ map: this.streamTex, roughness: 0.15, metalness: 0 });
-    this.streamTex.repeat.set(1, D / 2);
-    const sLen = front - (tz + tD / 2) + 0.6;
-    const sz = (front + 0.6 + tz + tD / 2) / 2;
-    const stream = new THREE.Mesh(new RoundedBoxGeometry(0.62, 0.06, sLen, 4, 0.03), streamMat);
-    stream.position.set(sx, 0.06, sz);
-    (stream as THREE.Mesh).geometry = fine(stream.geometry);
-    stream.receiveShadow = true;
-    this.island.add(stream);
-    for (const side of [-1, 1]) {
-      const bank = new THREE.Mesh(new RoundedBoxGeometry(0.12, 0.1, sLen - 0.2, 4, 0.05), toon({ color: "#e7d3a3" }));
-      bank.position.set(sx + side * 0.36, 0.05, sz - 0.1);
-      bank.receiveShadow = true;
-      this.island.add(bank);
+    // The river: from a stream tumbling off the hill, down the left side, across the meadow in
+    // front and away through the forest to the horizon, widening as it goes.
+    const path = new THREE.CatmullRomCurve3(
+      [
+        [sx, poolZ],
+        [sx, front - 1.2],
+        [sx + 0.4, front + 0.6],
+        [sx + 2.3, front + 1.4],
+        [sx + 4.8, front + 1.75],
+        [sx + 7.4, front + 1.35],
+        [W / 2 + 1.7, front + 0.8],
+        [W / 2 + 3.8, front - 0.8],
+        [W / 2 + 5.6, front - 3.8],
+        [W / 2 + 7.2, front - 7.4],
+        [W / 2 + 9.9, front - 10.6],
+        [W / 2 + 12, front - 14.6],
+        [W / 2 + 15.5, front - 18.8],
+        [W / 2 + 18, front - 24.5],
+        [W / 2 + 22, front - 30],
+      ].map(([x, z]) => new THREE.Vector3(x, 0, z)),
+      false,
+      "centripetal",
+    );
+    const riverLen = path.getLength();
+    const straight = front - 1 - poolZ;
+    const river: RiverPoint[] = [];
+    const steps = Math.ceil(riverLen / 0.25);
+    for (let i = 0; i <= steps; i++) {
+      const u = i / steps;
+      const p = path.getPointAt(u);
+      const tg = path.getTangentAt(u);
+      const d = u * riverLen;
+      river.push({ x: p.x, z: p.z, w: Math.min(2.1, 0.62 + Math.max(0, d - straight) * 0.055), nx: -tg.z, nz: tg.x, d });
     }
-    const fallMat = new THREE.MeshStandardMaterial({ map: this.fallTex, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.92 });
-    const fall = new THREE.Mesh(new THREE.PlaneGeometry(0.56, TERRACE_H + 0.1), fallMat);
-    fall.position.set(sx, TERRACE_H / 2 + 0.06, tz + tD / 2 + 0.02);
-    this.island.add(fall);
-    const pool = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 24), mat("#a8e6f4", { rough: 0.2, opacity: 0.85 }));
-    pool.position.set(sx, 0.08, tz + tD / 2 + 0.25);
-    this.island.add(pool);
-    const topStream = new THREE.Mesh(new RoundedBoxGeometry(0.56, 0.04, tD * 0.7, 4, 0.02), streamMat);
-    topStream.position.set(sx, topY, tz + tD * 0.15);
-    (topStream as THREE.Mesh).geometry = fine(topStream.geometry);
-    this.island.add(topStream);
-    for (let i = 0; i < 7; i++) add(rock(r, 0.06 + r() * 0.06, "#c9c3b8"), sx + (r() < 0.5 ? -1 : 1) * (0.36 + r() * 0.08), 0.06, sz - sLen / 2 + r() * sLen);
+    const rGrid = new Map<number, RiverPoint[]>();
+    const cellKey = (gx: number, gz: number) => (gx + 500) * 1000 + gz + 500;
+    for (const p of river) {
+      const k = cellKey(Math.floor(p.x / 2), Math.floor(p.z / 2));
+      const list = rGrid.get(k) ?? [];
+      list.push(p);
+      rGrid.set(k, list);
+    }
+    /** How far a spot is from the river's edge (looked up nearby only). */
+    const riverGap = (x: number, z: number) => {
+      let best = 9;
+      const gx = Math.floor(x / 2);
+      const gz = Math.floor(z / 2);
+      for (let i = -2; i <= 2; i++)
+        for (let j = -2; j <= 2; j++)
+          for (const p of rGrid.get(cellKey(gx + i, gz + j)) ?? []) {
+            const d = Math.hypot(x - p.x, z - p.z) - p.w / 2;
+            if (d < best) best = d;
+          }
+      return best;
+    };
+
+    // Ponds dotted through the forest.
+    const ponds = [
+      { x: -8.6, z: cz - 0.9, r: 2.0 },
+      { x: -12.5, z: cz - 7.5, r: 2.3 },
+      { x: -12, z: cz + 6, r: 1.7 },
+      { x: 2.5, z: back - 7.5, r: 2.6 },
+      { x: 17, z: cz + 4.5, r: 2.0 },
+      ...(lite ? [] : [
+        { x: -19, z: cz - 1, r: 2.8 },
+        { x: 8, z: back - 14, r: 2.2 },
+      ]),
+    ].map((p, i) => ({ ...p, seed: i * 1.7 + 0.4 }));
+    const pondEdge = (p: { r: number; seed: number }, a: number) => p.r * (1 + Math.sin(a * 3 + p.seed) * 0.12 + Math.sin(a * 5 + p.seed * 2) * 0.06);
+    const pondGap = (x: number, z: number) => {
+      let best = 9;
+      for (const p of ponds) {
+        const d = Math.hypot(x - p.x, z - p.z) - pondEdge(p, Math.atan2(z - p.z, x - p.x));
+        if (d < best) best = d;
+      }
+      return best;
+    };
+
+    // The hill behind the beds: a wavy foot, a rounded top with a few bumps, fading out at the sides.
+    const hillFoot = (x: number) => -halfD - 0.55 + Math.sin(x * 0.8 + 0.5) * 0.18 + Math.sin(x * 1.9) * 0.08;
+    const heightAt = (x: number, z: number) => {
+      const e = hillFoot(x);
+      const hill = HILL * smooth(e, e - 1.3, z) * smooth(back - 4.4, back - 2, z) * smooth(W / 2 + 3.5, W / 2 - 0.4, Math.abs(x)) * (0.85 + vnoise(x * 0.9, z * 0.9) * 0.3);
+      const rolling = (vnoise(x * 0.15 + 3, z * 0.15 + 9) * 1.5 + vnoise(x * 0.5 + 7, z * 0.5 + 3) * 0.35) * smooth(1.2, 6.5, boxDist(x, z));
+      return Math.max(hill, rolling) * smooth(0.5, 2, riverGap(x, z)) * smooth(0.5, 1.8, pondGap(x, z));
+    };
+
+    // The ground itself, finely divided so the hills are smooth and it curves to the horizon.
+    const SIZE = lite ? 70 : 90;
+    const SEG = lite ? 220 : 320;
+    const groundGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
+    groundGeo.rotateX(-Math.PI / 2);
+    const gp = groundGeo.attributes.position;
+    const tint = new Float32Array(gp.count * 3);
+    for (let i = 0; i < gp.count; i++) {
+      const x = gp.getX(i);
+      const z = gp.getZ(i) + cz;
+      const h = heightAt(x, z);
+      gp.setY(i, h);
+      // Sunny, drier grass on the hilltops; lusher by the water.
+      const t = Math.min(1, h / 1.2);
+      const wet = 1 - smooth(0.3, 1.6, Math.min(riverGap(x, z), pondGap(x, z)));
+      tint[i * 3] = 1 + t * 0.05 - wet * 0.1;
+      tint[i * 3 + 1] = 1 + t * 0.02 - wet * 0.03;
+      tint[i * 3 + 2] = 1 - t * 0.14 - wet * 0.12;
+    }
+    groundGeo.setAttribute("color", new THREE.BufferAttribute(tint, 3));
+    groundGeo.computeVertexNormals();
+    const groundTex = this.grassTex.clone();
+    groundTex.needsUpdate = true;
+    groundTex.repeat.set(SIZE / 1.6, SIZE / 1.6);
+    const ground = new THREE.Mesh(groundGeo, toon({ map: groundTex, vertexColors: true }));
+    ground.position.set(0, 0.07, cz);
+    ground.receiveShadow = true;
+    this.island.add(ground);
+
+    const water = new THREE.Mesh(
+      ribbon(river, 0, 0.1, 6, 2.5),
+      new THREE.MeshStandardMaterial({ map: this.riverTex, roughness: 0.16, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    );
+    water.receiveShadow = true;
+    this.island.add(water);
+    const banks = new THREE.Mesh(ribbon(river, 0.6, 0.09, 4, 1.6), toon({ map: this.bankTex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+    banks.receiveShadow = true;
+    this.island.add(banks);
+    // Pebbles, reeds and flowers along the banks; the odd boulder and lily pads out in the water.
+    for (let i = 2; i < river.length; i += 2) {
+      const p = river[i];
+      if (Math.hypot(p.x, p.z - cz) > 20) break;
+      const inLand = Math.abs(p.x) < W / 2 && p.z < front && p.z > back;
+      for (const side of [-1, 1]) {
+        const off = (p.w / 2 + 0.22 + r() * 0.18) * side;
+        const x = p.x + p.nx * off;
+        const z = p.z + p.nz * off;
+        const roll = r();
+        if (roll < 0.25) add(rock(r, (inLand ? 0.05 : 0.07) + r() * (inLand ? 0.05 : 0.1), "#c9c3b8"), x, 0.07, z);
+        else if (!inLand && roll < 0.55) add(tuft(r, 0.18 + r() * 0.12), x, 0.07, z, true);
+        else if (!inLand && roll < 0.65) add(wildflowers(r), x, 0.07, z, true);
+      }
+      if (p.w > 1 && r() < 0.1) add(rock(r, 0.12 + r() * 0.1, "#bdb6aa"), p.x + p.nx * (r() - 0.5) * p.w * 0.5, 0.03, p.z + p.nz * (r() - 0.5) * p.w * 0.5);
+      if (p.w > 1.1 && r() < 0.14) {
+        const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.02, 18, 1, false, 0.4, Math.PI * 1.85), mat("#5cb85c"));
+        const o = (r() < 0.5 ? -1 : 1) * p.w * (0.28 + r() * 0.12);
+        pad.position.set(p.x + p.nx * o, 0.115, p.z + p.nz * o);
+        pad.rotation.y = r() * 6;
+        this.island.add(pad);
+      }
+    }
+
+    // A little stream tumbles down the hill into the river, from a spring among rocks at the top.
+    const casc = new THREE.CatmullRomCurve3(
+      [
+        [sx + 0.5, back - 1.4],
+        [sx + 0.15, back - 0.3],
+        [sx - 0.05, tz + 0.25],
+        [sx, poolZ],
+      ].map(([x, z]) => new THREE.Vector3(x, 0, z)),
+    );
+    const cLen = casc.getLength();
+    const cPts: RiverPoint[] = [];
+    for (let i = 0; i <= 48; i++) {
+      const u = i / 48;
+      const p = casc.getPointAt(u);
+      const tg = casc.getTangentAt(u);
+      const w = 0.4 + u * 0.22;
+      const nx = -tg.z;
+      const nz = tg.x;
+      // Sit on the highest of the middle and both edges so the grass never pokes through.
+      const y = Math.max(heightAt(p.x, p.z), heightAt(p.x + nx * w * 0.5, p.z + nz * w * 0.5), heightAt(p.x - nx * w * 0.5, p.z - nz * w * 0.5)) + 0.1;
+      cPts.push({ x: p.x, z: p.z, w, nx, nz, d: u * cLen, y });
+    }
+    const stream = new THREE.Mesh(ribbon(cPts, 0, 0.1, 4, 1.6), water.material);
+    this.island.add(stream);
+    for (let i = 2; i < cPts.length; i += 3) {
+      const p = cPts[i];
+      for (const side of [-1, 1]) {
+        const off = (p.w / 2 + 0.06 + r() * 0.08) * side;
+        if (r() < 0.7) add(rock(r, 0.06 + r() * 0.07, "#c9c3b8"), p.x + p.nx * off, 0.05, p.z + p.nz * off);
+        else add(tuft(r, 0.16), p.x + p.nx * (off + 0.1 * side), 0.07, p.z + p.nz * (off + 0.1 * side), true);
+      }
+    }
+    for (let i = 0; i < 5; i++) add(rock(r, 0.1 + r() * 0.08, "#bdb6aa"), cPts[0].x + (r() - 0.5) * 0.7, 0.05, cPts[0].z - 0.15 + (r() - 0.5) * 0.4);
+    // Foam where the stream meets the river.
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const foam = ell(0.09 + r() * 0.05, 0.02, 0.07, "#ffffff", { emissive: "#ffffff", ei: 0.3 }, true);
+      foam.castShadow = false;
+      foam.position.set(sx + Math.cos(a) * 0.26, 0.11, poolZ + 0.1 + Math.sin(a) * 0.2);
+      this.island.add(foam);
+    }
+
+    // The ponds: deep blue in the middle, pale at the edges, with sandy shores, lily pads and reeds.
+    const pondMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.12, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const shoreMat = toon({ map: this.bankTex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    for (const p of ponds) {
+      const shore = new THREE.Mesh(blobDisc((a) => pondEdge(p, a) + 0.45), shoreMat);
+      shore.position.set(p.x, 0.09, p.z);
+      shore.receiveShadow = true;
+      this.island.add(shore);
+      const pool = new THREE.Mesh(blobDisc((a) => pondEdge(p, a), "#3d89bb", "#a6dde2"), pondMat);
+      pool.position.set(p.x, 0.1, p.z);
+      pool.receiveShadow = true;
+      this.island.add(pool);
+      for (let i = 0; i < 4; i++) {
+        const a = r() * Math.PI * 2;
+        const rr = pondEdge(p, a) * (0.45 + r() * 0.35);
+        const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.02, 18, 1, false, 0.4, Math.PI * 1.85), mat("#5cb85c"));
+        pad.position.set(p.x + Math.cos(a) * rr, 0.115, p.z + Math.sin(a) * rr);
+        pad.rotation.y = r() * 6;
+        this.island.add(pad);
+      }
+      for (let i = 0; i < 14; i++) {
+        const a = r() * Math.PI * 2;
+        const rr = pondEdge(p, a) + 0.3 + r() * 0.35;
+        const x = p.x + Math.cos(a) * rr;
+        const z = p.z + Math.sin(a) * rr;
+        if (r() < 0.4) add(rock(r, 0.07 + r() * 0.09, "#c9c3b8"), x, 0.07, z);
+        else add(tuft(r, 0.2 + r() * 0.14), x, 0.07, z, true);
+      }
+    }
+
     // A small wooden bridge across the stream.
     const bridge = new THREE.Group();
     const wood = toon({ color: "#c49a6c" });
@@ -448,8 +745,6 @@ export class GardenScene {
     const rimGeo = new RoundedBoxGeometry(T * 0.92, 0.05, T * 0.92, 4, 0.025);
     const bedMat = toon({ color: "#8a5a3c" });
     const rimMat = toon({ color: "#a9764f" });
-    const lawnGeo = new RoundedBoxGeometry(T * 0.9, 0.04, T * 0.9, 4, 0.02);
-    const lawnMat = toon({ map: this.grassTex, color: "#f2ffe4" });
     const pickGeo = new THREE.PlaneGeometry(T, T);
     for (let i = 0; i < this.cols * this.rows; i++) {
       const p = this.plotPos(i);
@@ -460,10 +755,12 @@ export class GardenScene {
         rim.receiveShadow = true;
         this.plotsGroup.add(rim);
       }
-      const tile = new THREE.Mesh(bed ? bedGeo : lawnGeo, bed ? bedMat : lawnMat);
-      tile.position.set(p.x, bed ? 0.075 : 0.06, p.z);
-      tile.receiveShadow = true;
-      this.plotsGroup.add(tile);
+      if (bed) {
+        const tile = new THREE.Mesh(bedGeo, bedMat);
+        tile.position.set(p.x, 0.075, p.z);
+        tile.receiveShadow = true;
+        this.plotsGroup.add(tile);
+      }
       const pick = new THREE.Mesh(pickGeo, new THREE.MeshBasicMaterial({ visible: false }));
       pick.rotation.x = -Math.PI / 2;
       pick.position.set(p.x, 0.11, p.z);
@@ -472,66 +769,129 @@ export class GardenScene {
       this.plotsGroup.add(pick);
     }
 
-    // Trees and bushes along the terrace.
+    // Trees and bushes along the top of the hill, wild flowers down its slope.
     const kinds: TreeKind[] = ["autumn", "golden", "round", "autumn", "fruit", "golden", "autumn", "round"];
-    for (let x = -W / 2 + 0.55; x <= W / 2 - 0.4; x += 0.85 + r() * 0.35) {
+    for (let x = -W / 2 + 0.4; x <= W / 2 - 0.3; x += 0.8 + r() * 0.35) {
+      if (Math.abs(x - sx) < 0.7) continue;
+      const z = back + 0.35 + (r() - 0.5) * 0.6;
+      if (r() < 0.25) add(bushBall(r, 0.2 + r() * 0.08, r() < 0.5), x, 0.07, z, true);
+      else add(edgeTree(r, kinds[Math.floor(r() * kinds.length)], 1.25 + r() * 0.5), x, 0.07, z, true);
+    }
+    for (let x = -W / 2 + 0.5; x <= W / 2 - 0.3; x += 0.4 + r() * 0.3) {
       if (Math.abs(x - sx) < 0.5) continue;
-      if (r() < 0.25) add(bushBall(r, 0.2 + r() * 0.08, r() < 0.5), x, topY, tz - tD * 0.15 + (r() - 0.5) * 0.4, true);
-      else add(edgeTree(r, kinds[Math.floor(r() * kinds.length)], 1.25 + r() * 0.5), x, topY, tz - tD * 0.12 + (r() - 0.5) * 0.35, true);
-    }
-    for (let x = -W / 2 + 0.7; x <= W / 2 - 0.4; x += 0.45 + r() * 0.3) {
-      if (Math.abs(x - sx) < 0.4) continue;
-      add(r() < 0.5 ? wildflowers(r) : tuft(r), x, topY, tz + tD * 0.32 + (r() - 0.5) * 0.15, true);
-    }
-
-    // The flat border round the plots: bushes, wild flowers, grass and rocks.
-    const free = (x: number, z: number) => (Math.abs(x) > halfW + 0.12 || z > halfD + 0.12 || (z < -halfD - 0.12 && z > tz + tD / 2 + 0.1)) && Math.abs(x - sx) > 0.55;
-    let n = 0;
-    for (let k = 0; n < 95 && k < 2000; k++) {
-      const x = (r() - 0.5) * (W - 0.4);
-      const z = back + 0.2 + r() * (D - 0.4);
-      if (z < tz + tD / 2 + 0.1 || !free(x, z)) continue;
-      n++;
-      const roll = r();
-      if (roll < 0.45) add(tuft(r, 0.12 + r() * 0.08), x, 0.08, z, true);
-      else if (roll < 0.75) add(wildflowers(r), x, 0.08, z, true);
-      else if (roll < 0.88) add(rock(r, 0.05 + r() * 0.05), x, 0.08, z);
-      else add(bushBall(r, 0.14 + r() * 0.06, r() < 0.5), x, 0.08, z, true);
+      add(r() < 0.5 ? meadowFlowers(r) : tuft(r), x, 0.07, hillFoot(x) - 0.35 - r() * 0.9, true);
     }
     // Round trees down the right-hand side and on the front corners frame the view.
-    for (let z = -halfD + 0.3; z < halfD - 0.6; z += 1.5 + r() * 0.6) add(edgeTree(r, kinds[Math.floor(r() * kinds.length)], 1.15 + r() * 0.35), W / 2 - 0.5, 0.08, z, true);
-    add(edgeTree(r, "fruit", 1.3), W / 2 - 0.45, 0.08, front - 0.45, true);
-    add(bushBall(r, 0.22, true), W / 2 - 0.95, 0.08, front - 0.35, true);
-    add(edgeTree(r, "round", 1.2), -halfW - 0.1, 0.08, front - 0.4, true);
-    // Fallen leaves scattered on the grass round the beds.
-    for (let k = 0, n = 0; n < 70 && k < 2000; k++) {
-      const x = (r() - 0.5) * (W - 0.4);
-      const z = back + 0.2 + r() * (D - 0.4);
-      if (z < tz + tD / 2 + 0.1 || !free(x, z)) continue;
-      n++;
-      const leaf = ell(0.05 + r() * 0.03, 0.006, 0.03 + r() * 0.015, LEAF_COLORS[Math.floor(r() * LEAF_COLORS.length)], undefined, true);
-      leaf.castShadow = false;
-      leaf.position.set(x, 0.085, z);
-      leaf.rotation.y = r() * Math.PI * 2;
-      this.island.add(leaf);
-    }
-    this.bounds = { w: W, d: D, cz };
-    // Rocks where the grass meets the beach, and lily pads on the sea.
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2 + r() * 0.3;
-      const x = Math.max(-W / 2 - 0.25, Math.min(W / 2 + 0.25, Math.cos(a) * (W / 2 + 0.3)));
-      const z = Math.max(back - 0.25, Math.min(front + 0.25, cz + Math.sin(a) * (D / 2 + 0.3)));
-      if (Math.abs(x - sx) < 0.5 && z > 0) continue;
-      add(rock(r, 0.09 + r() * 0.08), x, -0.26, z);
-    }
-    for (let i = 0; i < 10; i++) {
+    for (let z = -halfD + 0.3; z < halfD - 0.6; z += 1.5 + r() * 0.6) add(edgeTree(r, kinds[Math.floor(r() * kinds.length)], 1.15 + r() * 0.35), W / 2 - 0.5, 0.07, z, true);
+    add(edgeTree(r, "fruit", 1.3), W / 2 - 0.45, 0.07, front - 0.45, true);
+    add(bushBall(r, 0.22, true), W / 2 - 0.95, 0.07, front - 0.35, true);
+    add(edgeTree(r, "round", 1.2), -halfW - 0.1, 0.07, front - 0.4, true);
+
+    // Grass, wild flowers, pebbles and fallen leaves all over the land, thickest near the garden.
+    // Those close by sway; the rest are merged into a few meshes so it stays quick.
+    const inBeds = (x: number, z: number) => Math.abs(x) < halfW + 0.1 && z > -halfD - 0.1 && z < halfD + 0.1;
+    const wet = (x: number, z: number) => riverGap(x, z) < 0.3 || pondGap(x, z) < 0.3 || (Math.abs(x - sx) < 0.45 && z < poolZ && z > back - 2);
+    const loose = new THREE.Group();
+    const lay = (o: THREE.Object3D, x: number, y: number, z: number) => {
+      o.position.set(x, y + heightAt(x, z), z);
+      if (!o.userData.flat) o.rotation.y = r() * Math.PI * 2;
+      loose.add(o);
+    };
+    const scatter = lite ? 320 : 850;
+    for (let k = 0, n = 0; n < scatter && k < scatter * 8; k++) {
       const a = r() * Math.PI * 2;
-      const d = Math.max(W, D) * (0.7 + r() * 0.3);
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.02, 18, 1, false, 0.4, Math.PI * 1.85), mat("#5cb85c"));
-      pad.position.set(Math.cos(a) * d, -0.46, cz + Math.sin(a) * d * 0.8);
-      pad.rotation.y = r() * 6;
-      this.island.add(pad);
+      const d = Math.pow(r(), 0.85) * 24;
+      const x = Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (inBeds(x, z) || wet(x, z)) continue;
+      n++;
+      const roll = r();
+      if (boxDist(x, z) < 2.2) {
+        if (roll < 0.45) add(tuft(r, 0.12 + r() * 0.08), x, 0.07, z, true);
+        else if (roll < 0.6) add(wildflowers(r), x, 0.07, z, true);
+        else if (roll < 0.85) add(meadowFlowers(r), x, 0.07, z, true);
+        else add(rock(r, 0.05 + r() * 0.05), x, 0.07, z);
+      } else if (roll < 0.55) lay(tuft(r, 0.13 + r() * 0.1), x, 0.07, z);
+      else if (roll < 0.86) lay(meadowFlowers(r), x, 0.07, z);
+      else lay(rock(r, 0.05 + r() * 0.07), x, 0.07, z);
     }
+    for (let k = 0, n = 0; n < (lite ? 260 : 700) && k < 8000; k++) {
+      const a = r() * Math.PI * 2;
+      const d = Math.pow(r(), 0.9) * 22;
+      const x = Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (inBeds(x, z) || wet(x, z)) continue;
+      n++;
+      const leaf = fallenLeaf(r, LEAF_COLORS[Math.floor(r() * LEAF_COLORS.length)]);
+      leaf.userData.flat = true;
+      lay(leaf, x, 0.078, z);
+    }
+    const looseBaked = bake(loose);
+    looseBaked.traverse((c) => {
+      c.castShadow = false;
+    });
+    loose.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (m.isMesh && !m.geometry.userData?.shared) m.geometry.dispose();
+    });
+    this.island.add(looseBaked);
+    this.bounds = { w: W, d: D, cz };
+
+    // A thick forest of puffy trees all round the planet, out to the horizon, with a little meadow
+    // in front of the garden. The trees by the garden are full models with shadows; further out
+    // they're simpler, and past that they're merged into a couple of meshes so it stays quick.
+    const fr = rng(31 + this.rows);
+    const forestKinds: TreeKind[] = ["autumn", "golden", "round", "autumn", "fruit", "golden", "round", "blossom", "autumn", "round"];
+    const RADIUS = lite ? 26 : 32;
+    const meadow = (x: number, z: number) => z > front && z < front + 3.2 && x > sx + 1.2 && x < W / 2 + 2.5;
+    const clearOf = (x: number, z: number) => boxDist(x, z) > 0.6 && !meadow(x, z) && riverGap(x, z) > 0.55 && pondGap(x, z) > 0.6;
+    const grid = new Map<number, [number, number][]>();
+    const key = (gx: number, gz: number) => (gx + 500) * 1000 + gz + 500;
+    const spacing = (d: number) => (0.95 + Math.max(0, d - 10) * 0.03) * (lite ? 1.25 : 1);
+    const nearTrees = new THREE.Group();
+    const spots: ForestSpot[] = [];
+    for (let k = 0; k < (lite ? 9000 : 18000); k++) {
+      const a = fr() * Math.PI * 2;
+      const d = Math.sqrt(fr()) * RADIUS;
+      const x = Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (!clearOf(x, z)) continue;
+      const sp = spacing(d);
+      const gx = Math.floor(x);
+      const gz = Math.floor(z);
+      let ok = true;
+      for (let i = -2; i <= 2 && ok; i++)
+        for (let j = -2; j <= 2 && ok; j++)
+          for (const [px, pz] of grid.get(key(gx + i, gz + j)) ?? [])
+            if ((px - x) ** 2 + (pz - z) ** 2 < sp * sp) {
+              ok = false;
+              break;
+            }
+      if (!ok) continue;
+      const cell = grid.get(key(gx, gz)) ?? [];
+      cell.push([x, z]);
+      grid.set(key(gx, gz), cell);
+      const kind = forestKinds[Math.floor(fr() * forestKinds.length)];
+      const h = (1.1 + fr() * 1.0) * (1 + Math.max(0, d - 12) * 0.025);
+      const bush = fr() < 0.12;
+      const near = boxDist(x, z);
+      if (near < 5) {
+        if (bush) add(bushBall(fr, 0.18 + fr() * 0.1, fr() < 0.4), x, 0.07, z, true);
+        else {
+          const tree = edgeTree(fr, kind, h, lite || near > 1.6);
+          tree.position.set(x, 0.07 + heightAt(x, z), z);
+          tree.rotation.y = fr() * Math.PI * 2;
+          nearTrees.add(tree);
+        }
+      } else spots.push({ x, y: 0.07 + heightAt(x, z), z, h: bush ? 0.55 + fr() * 0.3 : h, kind: bush && fr() < 0.6 ? "round" : kind, lo: d > 19, bush });
+    }
+    const nearBaked = bake(nearTrees);
+    nearTrees.traverse((c) => {
+      const m = c as THREE.Mesh;
+      if (m.isMesh && !m.geometry.userData?.shared) m.geometry.dispose();
+    });
+    this.island.add(nearBaked);
+    this.island.add(forestMesh(spots, fr));
 
     curveObject(this.island);
     curveObject(this.plotsGroup);
@@ -643,7 +1003,7 @@ export class GardenScene {
     if (!this.baseDist) return;
     const tall = Math.max(1, Math.pow(1.25 / Math.max(0.3, this.camera.aspect), 0.75));
     const dist = this.baseDist * tall;
-    const dir = new THREE.Vector3(5.4, 7.2, 8.4).normalize();
+    const dir = new THREE.Vector3(5.4, 5.0, 8.4).normalize();
     this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
     this.controls.maxDistance = Math.max(this.controls.maxDistance, dist * 1.3);
   }
@@ -697,11 +1057,13 @@ export class GardenScene {
     }
     for (const o of this.sways) o.rotation.z = Math.sin(t * 1.2 + (o.userData.seed as number)) * 0.018;
     for (const c of this.clouds) {
-      c.position.x += c.userData.speed * dt;
-      if (c.position.x > 22) c.position.x = -22;
+      c.userData.a += (c.userData.speed * dt) / c.userData.rad;
+      c.position.x = Math.cos(c.userData.a) * c.userData.rad;
+      c.position.z = Math.sin(c.userData.a) * c.userData.rad;
     }
     this.streamTex.offset.y -= dt * 0.35;
     this.fallTex.offset.y += dt * 0.9;
+    this.riverTex.offset.y -= dt * 0.22;
 
     for (const s of this.sparkles) {
       s.visible = !!growing;
@@ -743,7 +1105,6 @@ export class GardenScene {
     place(this.hoverRing, this.hovered !== this.selected ? this.hovered : null, 0);
     place(this.selectRing, this.selected, 0.002);
     this.selectRing.scale.setScalar(1 + Math.sin(t * 3) * 0.025);
-    if (this.water) (this.water.material as THREE.MeshStandardMaterial).color.setHSL(0.535, 0.78, 0.6 + Math.sin(t * 0.8) * 0.012);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -767,7 +1128,7 @@ export class GardenScene {
   }
 }
 
-/** Small pictures of every plant (in bloom) and decoration, for the lists beside the garden. */
+/** Small pictures of every plant (in bloom), for the lists beside the garden and the journal. */
 export async function renderThumbs(size = 168): Promise<Record<string, string>> {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
@@ -802,7 +1163,6 @@ export async function renderThumbs(size = 168): Promise<Record<string, string>> 
     for (let tier = 0; tier < 5; tier++) shoot(`flower:${s.id}:${tier}`, buildFlower(s.id, 1, tier, 13));
     out[`plant:${s.id}`] = out[`flower:${s.id}:2`];
   }
-  for (const d of DECOR) shoot(`decor:${d.id}`, buildGardenDecor(d.id, 5));
   CURVE.uCurve.value = curve;
   renderer.dispose();
   renderer.forceContextLoss();

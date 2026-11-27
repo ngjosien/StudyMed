@@ -201,7 +201,7 @@ function TodoCard({ t, onOpen, compact }: { t: Row; onOpen: () => void; compact?
         <Checkbox checked={!!t.done} onChange={(c) => mutate(db.update("todos", t.id, doneChange(c)))} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className={cx("font-medium", compact ? "line-clamp-2 text-[13px] leading-snug" : "truncate", t.done && "text-muted line-through")}>{t.title}</div>
+        <div className={cx("font-medium", compact ? "line-clamp-2 text-[13px] leading-snug" : "line-clamp-2 leading-snug", t.done && "text-muted line-through")}>{t.title}</div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
           {!t.done && <Countdown date={t.date} />}
           {!compact && t.date && <span>{fmtDateShort(t.date)}</span>}
@@ -316,7 +316,7 @@ export default function TodosPage() {
             isOpen={(t) => !t.done}
             onAdd={(date) => form.openNew({ date })}
             addLabel="Add a to-do"
-            render={(t) => <TodoCard t={t} compact onOpen={() => setOpenId(t.id)} />}
+            render={(t) => <TodoCard t={t} onOpen={() => setOpenId(t.id)} />}
           />
         ) : (
         <LinkedSections

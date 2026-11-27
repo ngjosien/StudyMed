@@ -2,7 +2,7 @@
 // and lighter on top, round bushes, grass tufts, wild flowers and smooth rocks, all
 // lit with soft cartoon shading. The flowers you grow are in flowers.ts.
 import * as THREE from "three";
-import { buildDecor, mat, rng, stalk } from "./models";
+import { buildDecor, mat, rng, stalk, TOON_RAMP } from "./models";
 
 const BALL = new THREE.SphereGeometry(1, 32, 22);
 const SMALLBALL = new THREE.SphereGeometry(1, 16, 12);
@@ -41,9 +41,9 @@ const BARK_DARK = "#7b5236";
 /* ------------------------------------------------------------ Building blocks */
 
 /** A fluffy crown: a core plus overlapping balls on its surface, darker below and lighter on top. */
-export function puffball(r: () => number, cx: number, cy: number, cz: number, R: number, shades: [string, string, string], n = 16) {
+export function puffball(r: () => number, cx: number, cy: number, cz: number, R: number, shades: [string, string, string], n = 16, low = false) {
   const g = new THREE.Group();
-  g.add(pos(blob(R * 0.92, R * 0.84, R * 0.92, shades[1]), cx, cy, cz));
+  g.add(pos(blob(R * 0.92, R * 0.84, R * 0.92, shades[1], low), cx, cy, cz));
   const golden = Math.PI * (3 - Math.sqrt(5));
   for (let i = 0; i < n; i++) {
     const y = 1 - (i / (n - 1)) * 1.6; // mostly upper and middle
@@ -54,13 +54,13 @@ export function puffball(r: () => number, cx: number, cy: number, cz: number, R:
     const s = R * (0.42 + r() * 0.14);
     const t = (y + 0.6) / 1.6; // 0 bottom .. 1 top
     const c = t < 0.5 ? mix(shades[0], shades[1], t * 2) : mix(shades[1], shades[2], (t - 0.5) * 2);
-    g.add(pos(blob(s, s * 0.92, s, c), cx + px * R * 0.72, cy + y * R * 0.62, cz + pz * R * 0.72));
+    g.add(pos(blob(s, s * 0.92, s, c, low), cx + px * R * 0.72, cy + y * R * 0.62, cz + pz * R * 0.72));
   }
   // A couple of sunlit highlights on top.
   for (let i = 0; i < 3; i++) {
     const a = r() * Math.PI * 2;
     const s = R * (0.24 + r() * 0.08);
-    g.add(pos(blob(s, s * 0.8, s, mix(shades[2], "#ffffff", 0.18)), cx + Math.cos(a) * R * 0.35, cy + R * 0.72, cz + Math.sin(a) * R * 0.35));
+    g.add(pos(blob(s, s * 0.8, s, mix(shades[2], "#ffffff", 0.18), low), cx + Math.cos(a) * R * 0.35, cy + R * 0.72, cz + Math.sin(a) * R * 0.35));
   }
   return g;
 }
@@ -135,6 +135,44 @@ export function rock(r: () => number, s: number, tone = "#b9b4ab") {
 
 const PALETTE = ["#ff7b8a", "#ffb3c7", "#ffd166", "#ffffff", "#c9a7f7", "#ff9f5a", "#8fc9ff"];
 
+const TINY_BALL = new THREE.SphereGeometry(1, 8, 6);
+const THIN = new THREE.CylinderGeometry(1, 1, 1, 5, 1);
+const LEAF_DISC = new THREE.CircleGeometry(1, 7).rotateX(-Math.PI / 2);
+for (const g of [TINY_BALL, THIN, LEAF_DISC]) g.userData.shared = true;
+
+/** A few small, simple wild flowers, cheap enough to scatter over the whole land. */
+export function meadowFlowers(r: () => number) {
+  const g = new THREE.Group();
+  const c = PALETTE[Math.floor(r() * PALETTE.length)];
+  for (let i = 0; i < 3; i++) {
+    const x = (r() - 0.5) * 0.18;
+    const z = (r() - 0.5) * 0.18;
+    const h = 0.08 + r() * 0.08;
+    const st = new THREE.Mesh(THIN, mat(STEM));
+    st.scale.set(0.007, h, 0.007);
+    st.position.set(x, h / 2, z);
+    g.add(st);
+    const f = new THREE.Mesh(TINY_BALL, mat(c));
+    f.scale.set(0.034, 0.02, 0.034);
+    f.position.set(x, h, z);
+    g.add(f);
+    const mid = new THREE.Mesh(TINY_BALL, mat("#ffcf4a"));
+    mid.scale.setScalar(0.013);
+    mid.position.set(x, h + 0.014, z);
+    g.add(mid);
+  }
+  return g;
+}
+
+/** A fallen leaf lying flat on the grass. */
+export function fallenLeaf(r: () => number, color: string) {
+  const m = new THREE.Mesh(LEAF_DISC, mat(color));
+  m.scale.set(0.05 + r() * 0.03, 1, 0.03 + r() * 0.015);
+  m.rotation.y = r() * Math.PI * 2;
+  m.receiveShadow = true;
+  return m;
+}
+
 /** A little cluster of wild flowers for the island's edges. */
 export function wildflowers(r: () => number) {
   const g = new THREE.Group();
@@ -177,13 +215,14 @@ const CROWNS: Record<TreeKind, [string, string, string]> = {
 };
 
 /** A round, puffy tree: a leaning trunk under a fluffy crown (with fruit on the fruit tree). */
-export function edgeTree(r: () => number, kind: TreeKind, h: number) {
+/** `low`: fewer, simpler puffs, for trees far away. */
+export function edgeTree(r: () => number, kind: TreeKind, h: number, low = false) {
   const g = new THREE.Group();
   const t = trunk(r, h * 0.42, h * 0.065);
   g.add(t);
   const top = t.userData.top as THREE.Vector3;
   const R = h * 0.3;
-  g.add(puffball(r, top.x, top.y + R * 0.72, top.z, R, CROWNS[kind], 18));
+  g.add(puffball(r, top.x, top.y + R * 0.72, top.z, R, CROWNS[kind], low ? 9 : 18, low));
   if (kind === "fruit")
     for (let i = 0; i < 12; i++) {
       const y = 1 - (i / 12) * 1.3;
@@ -239,4 +278,123 @@ export function buildGardenDecor(kind: string, seed: number) {
     return g;
   }
   return buildDecor(kind, seed);
+}
+
+/* ------------------------------------------------------------ Distant forest */
+const FAR_BALL = new THREE.SphereGeometry(1, 10, 7);
+const FAR_BALL_LO = new THREE.SphereGeometry(1, 7, 5);
+const FAR_TRUNK = new THREE.CylinderGeometry(0.6, 1, 1, 6, 1, true);
+const WHITE = new THREE.Color("#ffffff");
+
+export interface ForestSpot {
+  x: number;
+  y: number;
+  z: number;
+  h: number;
+  kind: TreeKind;
+  /** Fewer, coarser puffs (far away). */
+  lo?: boolean;
+  /** A bush: a low crown and no trunk. */
+  bush?: boolean;
+}
+
+interface Piece {
+  geo: THREE.BufferGeometry;
+  x: number;
+  y: number;
+  z: number;
+  sx: number;
+  sy: number;
+  sz: number;
+  c: THREE.Color;
+}
+
+/** Copies many scaled pieces into one geometry, each coloured by its vertices. */
+function mergePieces(list: Piece[]) {
+  let nv = 0;
+  let ni = 0;
+  for (const p of list) {
+    nv += p.geo.attributes.position.count;
+    ni += p.geo.index!.count;
+  }
+  const pos = new Float32Array(nv * 3);
+  const nor = new Float32Array(nv * 3);
+  const col = new Float32Array(nv * 3);
+  const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  let ov = 0;
+  let oi = 0;
+  for (const p of list) {
+    const P = p.geo.attributes.position.array;
+    const N = p.geo.attributes.normal.array;
+    const I = p.geo.index!.array;
+    const cnt = P.length / 3;
+    for (let i = 0; i < cnt; i++) {
+      const a = (ov + i) * 3;
+      const b = i * 3;
+      pos[a] = P[b] * p.sx + p.x;
+      pos[a + 1] = P[b + 1] * p.sy + p.y;
+      pos[a + 2] = P[b + 2] * p.sz + p.z;
+      const nx = N[b] / p.sx;
+      const ny = N[b + 1] / p.sy;
+      const nz = N[b + 2] / p.sz;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nor[a] = nx / l;
+      nor[a + 1] = ny / l;
+      nor[a + 2] = nz / l;
+      col[a] = p.c.r;
+      col[a + 1] = p.c.g;
+      col[a + 2] = p.c.b;
+    }
+    for (let i = 0; i < I.length; i++) idx[oi + i] = I[i] + ov;
+    ov += cnt;
+    oi += I.length;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
+  return g;
+}
+
+/**
+ * Hundreds of simple puffy trees as just two meshes (crowns and trunks), for the forest
+ * that runs to the horizon. Same shapes and colours as edgeTree, with fewer puffs.
+ */
+export function forestMesh(spots: ForestSpot[], r: () => number) {
+  const crowns: Piece[] = [];
+  const trunks: Piece[] = [];
+  const bark = new THREE.Color(BARK);
+  for (const s of spots) {
+    const sh = CROWNS[s.kind].map((c) => new THREE.Color(c));
+    const vary = 0.9 + r() * 0.18;
+    const R = s.bush ? s.h * 0.45 : s.h * 0.3;
+    const ball = s.lo ? FAR_BALL_LO : FAR_BALL;
+    if (!s.bush) trunks.push({ geo: FAR_TRUNK, x: s.x, y: s.y + s.h * 0.21, z: s.z, sx: s.h * 0.065, sy: s.h * 0.42, sz: s.h * 0.065, c: bark });
+    const cy = s.y + (s.bush ? R * 0.55 : s.h * 0.42 + R * 0.72);
+    crowns.push({ geo: ball, x: s.x, y: cy, z: s.z, sx: R * 0.95, sy: R * 0.85, sz: R * 0.95, c: sh[1].clone().multiplyScalar(vary) });
+    const n = s.lo ? 5 : 8;
+    for (let i = 0; i < n; i++) {
+      const yy = 1 - (i / (n - 1)) * 1.5;
+      const rad = Math.sqrt(Math.max(0, 1 - yy * yy));
+      const th = i * 2.399 + r() * 0.6;
+      const k = R * (0.45 + r() * 0.14);
+      const t = (yy + 0.5) / 1.5;
+      const c = t < 0.5 ? sh[0].clone().lerp(sh[1], Math.max(0, t * 2)) : sh[1].clone().lerp(sh[2], Math.min(1, (t - 0.5) * 2));
+      crowns.push({ geo: ball, x: s.x + Math.cos(th) * rad * R * 0.72, y: cy + yy * R * 0.62, z: s.z + Math.sin(th) * rad * R * 0.72, sx: k, sy: k * 0.92, sz: k, c: c.multiplyScalar(vary) });
+    }
+    const k = R * 0.3;
+    crowns.push({ geo: ball, x: s.x + (r() - 0.5) * R * 0.5, y: cy + R * 0.7, z: s.z + (r() - 0.5) * R * 0.5, sx: k, sy: k * 0.8, sz: k, c: sh[2].clone().lerp(WHITE, 0.15) });
+  }
+  const g = new THREE.Group();
+  const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: TOON_RAMP });
+  for (const list of [crowns, trunks]) {
+    if (!list.length) continue;
+    const m = new THREE.Mesh(mergePieces(list), material);
+    m.castShadow = false;
+    m.receiveShadow = false;
+    g.add(m);
+  }
+  return g;
 }

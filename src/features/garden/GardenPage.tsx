@@ -2,26 +2,26 @@
 // Plant a flower, then study to grow it: focus sessions and logged study grow the
 // flower first in line, and it keeps its progress between sessions. The fewer
 // sessions a flower takes to bloom, the rarer its colour. Bloomed flowers give laurels to
-// collect, more for longer flowers and rarer colours. Laurels buy decorations.
+// collect, more for longer flowers and rarer colours. The flower guide shows every colour.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRightLeft, ChevronLeft, ChevronRight, Lock, MoveRight, RotateCw, Sprout, Star, Timer, Undo2 } from "lucide-react";
+import { ArrowRightLeft, ChevronLeft, ChevronRight, Lock, MoveRight, Sprout, Star, Timer } from "lucide-react";
 import { db, type Row } from "../../lib/api";
 import { useMutate, useRows } from "../../lib/hooks";
 import { fmtDate } from "../../lib/dates";
 import { cx, fmtMinutes } from "../../lib/format";
 import { toast } from "../../stores/toast";
 import { focusMs, useFocusRun, useTick } from "../../lib/focus";
-import { Button, Card, ConfirmDelete, MilestoneBar, Page, PageHeader, Segmented } from "../../components/ui";
+import { Button, Card, ConfirmDelete, MilestoneBar, Page, PageHeader, } from "../../components/ui";
 import { Beats, useBeats } from "../../components/beats";
-import { bedsIn, bloomLaurels, countSessions, DECOR, decorById, LAND_CELLS, landName, landOf, LEGACY_TIER, RARITY, SPECIES, speciesById, STAGE_NAMES, stageOf, TIER_RULE, tierOf, type Species } from "./catalog";
+import { bedsIn, bloomLaurels, countSessions, LAND_CELLS, landName, landOf, LEGACY_TIER, RARITY, SPECIES, speciesById, STAGE_NAMES, stageOf, TIER_RULE, tierOf, type Species } from "./catalog";
 import type { Cell } from "./scene";
 import { isMobile } from "../../lib/platform";
 
 const m = (n: number) => fmtMinutes(Math.round(n)) || "0m";
 type Credit = { log_id: number; date: string; minutes: number };
 
-/** Pictures of each flower colour and decoration, rendered from the 3D models once per session. */
+/** Pictures of each flower colour, rendered from the 3D models once per session. */
 let thumbCache: Record<string, string> | null = null;
 let thumbJob: Promise<Record<string, string>> | null = null;
 export function useThumbs() {
@@ -140,14 +140,12 @@ function Island({ beds, cells, selected, onPick }: { beds: number; cells: Cell[]
 export default function GardenPage() {
   const mutate = useMutate();
   const plants = useRows("garden_plants", undefined, "queue, id").rows;
-  const decor = useRows("garden_decor", undefined, "id").rows;
   const creditRows = useRows<Credit & { plant_id: number }>("garden_credits", undefined, "id").rows;
   const { balance } = useBeats();
   const current = landOf();
   const [land, setLand] = useState(current);
   const [selected, setSelected] = useState<number | null>(null);
-  const [moving, setMoving] = useState<{ kind: "plant" | "decor"; id: number } | null>(null);
-  const [tab, setTab] = useState<"seeds" | "decor">("seeds");
+  const [moving, setMoving] = useState<{ kind: "plant"; id: number } | null>(null);
   const thumbs = useThumbs();
 
   // A focus session on a module counts toward the growing flower live.
@@ -169,12 +167,11 @@ export default function GardenPage() {
   };
   const rewardFor = (p: Row) => bloomLaurels(Number(p.need_minutes), tierFor(p));
 
-  const lands = useMemo(() => [...new Set([current, ...plants.map((p) => p.land ?? current), ...decor.map((d) => d.land ?? current)])].sort(), [plants, decor, current]);
+  const lands = useMemo(() => [...new Set([current, ...plants.map((p) => p.land ?? current)])].sort(), [plants, current]);
   const li = lands.indexOf(land);
   const beds = bedsIn(land);
   const isCurrent = land === current;
   const here = plants.filter((p) => (p.land ?? current) === land);
-  const hereDecor = decor.filter((d) => (d.land ?? current) === land);
 
   // Study grows the flower first in line (or the one picked for the running focus session).
   const queue = plants.filter((p) => !p.grown_at);
@@ -184,11 +181,10 @@ export default function GardenPage() {
   const grown = plants.filter((p) => p.grown_at);
   const toCollect = grown.filter((p) => p.claimed == null);
   const at = useMemo(() => {
-    const map = new Map<number, { kind: "plant" | "decor"; row: Row }>();
+    const map = new Map<number, { kind: "plant"; row: Row }>();
     here.forEach((p) => map.set(p.plot, { kind: "plant", row: p }));
-    hereDecor.forEach((d) => map.set(d.plot, { kind: "decor", row: d }));
     return map;
-  }, [here, hereDecor]);
+  }, [here]);
   const progressOf = (p: Row) => Math.min(1, (Number(p.minutes) + (growingPlant?.id === p.id ? live : 0)) / Number(p.need_minutes));
 
   const cells: Cell[] = useMemo(
@@ -208,10 +204,9 @@ export default function GardenPage() {
           claim: !!p.grown_at && p.claimed == null,
         };
       }),
-      ...hereDecor.map((d) => ({ key: `d${d.id}:${d.kind}:${d.rot}`, plot: d.plot, kind: "decor" as const, decor: d.kind, rot: d.rot, seed: d.id * 17 + 3 })),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [here, hereDecor, live, growingPlant?.id, credits],
+    [here, live, growingPlant?.id, credits],
   );
 
   const sel = selected != null ? at.get(selected) : undefined;
@@ -227,16 +222,16 @@ export default function GardenPage() {
   };
 
   const pickPlot = async (p: number | null) => {
+    // Only the soil beds can be picked; the grass round them is just lawn.
+    if (p != null && p >= beds) p = null;
     if (moving && p != null && !at.has(p)) {
-      if (moving.kind === "plant" && p >= beds) return toast.error("Flowers need a soil bed");
-      await mutate(db.update(moving.kind === "plant" ? "garden_plants" : "garden_decor", moving.id, { plot: p }));
+      await mutate(db.update("garden_plants", moving.id, { plot: p }));
       setMoving(null);
       setSelected(p);
       return;
     }
     setMoving(null);
     setSelected(p);
-    if (p != null && p >= beds) setTab("decor");
   };
 
   const plant = async (s: Species) => {
@@ -245,24 +240,10 @@ export default function GardenPage() {
     await mutate(db.insert("garden_plants", { species: s.id, land, plot: selected, need_minutes: s.minutes, queue: maxQ + 1 }));
     toast.success(queue.length ? `${s.name} planted. It grows after the flowers ahead of it.` : `${s.name} planted. Study to make it grow.`);
   };
-  const place = async (kind: string) => {
-    if (selected == null) return;
-    const d = decorById.get(kind)!;
-    if (balance < d.cost) return toast.error(`You need ${d.cost - balance} more laurels`);
-    await mutate(async () => {
-      const row = await db.insert("garden_decor", { kind, land, plot: selected });
-      await db.insert("beats", { amount: -d.cost, reason: `Garden · ${d.name}`, source_type: "garden", source_id: row.id });
-    });
-  };
   const growNext = (p: Row) => {
     const minQ = plants.reduce((q, x) => Math.min(q, Number(x.queue)), 0);
     return mutate(db.update("garden_plants", p.id, { queue: minQ - 1 }));
   };
-  const removeDecor = (d: Row) =>
-    mutate(async () => {
-      await db.remove("garden_decor", d.id);
-      await db.removeWhere("beats", { source_type: "garden", source_id: d.id });
-    });
   const collect = async (list: Row[]) => {
     let total = 0;
     await mutate(async () => {
@@ -341,7 +322,7 @@ export default function GardenPage() {
             )}
             {moving && (
               <div className="absolute top-16 right-3 flex items-center gap-2 rounded-full bg-white/85 px-3 py-1.5 text-xs font-medium text-[#2d3a2a] shadow">
-                <MoveRight size={13} /> Click an empty {moving.kind === "plant" ? "bed" : "spot"} to move it
+                <MoveRight size={13} /> Click an empty bed to move it
                 <button type="button" className="underline" onClick={() => setMoving(null)}>
                   Cancel
                 </button>
@@ -356,20 +337,9 @@ export default function GardenPage() {
                 {!sel && (
                   <>
                     <div className="mb-3 flex items-center gap-2">
-                      <h2 className="flex-1 font-semibold">{selected < beds ? `Bed ${selected + 1}` : "Lawn"}</h2>
-                      {selected < beds && (
-                        <Segmented<"seeds" | "decor">
-                          value={tab}
-                          onChange={setTab}
-                          options={[
-                            { value: "seeds", label: "Flowers" },
-                            { value: "decor", label: "Decorate" },
-                          ]}
-                        />
-                      )}
+                      <h2 className="flex-1 font-semibold">Bed {selected + 1}</h2>
                     </div>
-                    {tab === "seeds" && selected < beds ? (
-                      isCurrent ? (
+                    {isCurrent ? (
                         <>
                         <div className="max-h-[56vh] space-y-1 overflow-y-auto pr-1">
                           {SPECIES.map((s) => {
@@ -416,24 +386,7 @@ export default function GardenPage() {
                             Go to {landName(current)}
                           </Button>
                         </div>
-                      )
-                    ) : (
-                      <div className="grid max-h-[56vh] grid-cols-2 gap-1.5 overflow-y-auto pr-1">
-                        {DECOR.map((d) => (
-                          <button
-                            type="button"
-                            key={d.id}
-                            disabled={balance < d.cost}
-                            onClick={() => place(d.id)}
-                            className="flex flex-col items-start rounded-2xl border border-line px-3 py-2.5 text-left hover:bg-surface-2 disabled:opacity-45"
-                          >
-                            <Thumb src={thumbs[`decor:${d.id}`]} size={56} className="mb-1" />
-                            <span className="text-sm font-medium">{d.name}</span>
-                            <Beats n={d.cost} unit={false} className="text-xs" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                      )}
                   </>
                 )}
                 {sel?.kind === "plant" && (
@@ -450,26 +403,6 @@ export default function GardenPage() {
                     onMove={() => setMoving({ kind: "plant", id: sel.row.id })}
                     onCollect={() => collect([sel.row])}
                   />
-                )}
-                {sel?.kind === "decor" && (
-                  <div>
-                    <p className="eyebrow !text-[9.5px]">Decoration</p>
-                    <h2 className="font-display flex items-center gap-3 text-xl">
-                      <Thumb src={thumbs[`decor:${sel.row.kind}`]} size={52} />
-                      {decorById.get(sel.row.kind)?.name}
-                    </h2>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button size="sm" icon={RotateCw} onClick={() => mutate(db.update("garden_decor", sel.row.id, { rot: (Number(sel.row.rot) + 1) % 4 }))}>
-                        Turn
-                      </Button>
-                      <Button size="sm" icon={ArrowRightLeft} onClick={() => setMoving({ kind: "decor", id: sel.row.id })}>
-                        Move
-                      </Button>
-                      <Button size="sm" variant="ghost" icon={Undo2} onClick={() => removeDecor(sel.row)}>
-                        Put away (refund)
-                      </Button>
-                    </div>
-                  </div>
                 )}
               </Card>
             ) : (

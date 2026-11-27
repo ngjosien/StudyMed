@@ -221,10 +221,10 @@ export default function EventsPage() {
             onAdd={(date) => form.openNew({ start_at: date + "T09:00" })}
             addLabel="Add an event"
             render={(e) => (
-              <Card onClick={() => setOpenId(e.id)} className="relative overflow-hidden p-2.5 pl-3.5">
+              <Card onClick={() => setOpenId(e.id)} className="relative overflow-hidden p-3 pl-4">
                 <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: TYPE_COLOR[e.type] }} />
-                <div className="text-[11px] text-muted">{e.all_day ? "All day" : fmtTime(e.start_at)}</div>
-                <div className="line-clamp-2 text-[13px] leading-snug font-medium">{e.name}</div>
+                <div className="text-xs font-semibold text-muted">{e.all_day ? "All day" : fmtTime(e.start_at)}</div>
+                <div className="line-clamp-3 text-[15px] leading-snug font-medium">{e.name}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <Countdown date={e.start_at} done={isPast(e)} />
                   <span className="truncate text-[10.5px] text-muted">{eventKind(e)}</span>
