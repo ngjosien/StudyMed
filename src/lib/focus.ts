@@ -17,6 +17,8 @@ export interface FocusSetup {
   plannedMin: number;
   /** The garden flower this session grows first (academic sessions). */
   plantId?: number | null;
+  /** The to-do this session is for (started from "Focus on this"). */
+  todoId?: number | null;
 }
 
 export interface FocusRun extends FocusSetup {

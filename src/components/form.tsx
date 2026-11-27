@@ -9,7 +9,7 @@ import { useMutate } from "../lib/hooks";
 import { cx, fmtMoney, fromCents, toCents, truthy } from "../lib/format";
 import { fmtDateShort, fmtDateTime } from "../lib/dates";
 import { RECORDS } from "../lib/records";
-import { Button, ColorPicker, ConfirmDelete, IconButton, Input, Rating, Textarea } from "./ui";
+import { Button, ColorPicker, ConfirmDelete, DurationSlider, IconButton, Input, Rating, Textarea } from "./ui";
 import { ChoiceField, DateField, DateTimeField, TimeField, Toggle } from "./pickers";
 import { AttachmentList, LocalImage, MultiSelect, pickAndImportImage, ReminderPicker, TagInput } from "./shared";
 import { Connections, saveLinks, type Ref } from "./connections";
@@ -28,6 +28,7 @@ export type FieldType =
   | "checkbox"
   | "color"
   | "rating"
+  | "duration"
   | "url";
 
 export interface FieldDef {
@@ -108,6 +109,18 @@ export function FieldInput({ f, value, onChange }: { f: FieldDef; value: unknown
       return <ColorPicker value={text || "#f4a6c0"} onChange={onChange} />;
     case "rating":
       return <Rating value={Number(value ?? 0)} onChange={onChange} size={22} />;
+    case "duration":
+      return value == null || value === "" ? (
+        <Button size="sm" onClick={() => onChange(30)}>
+          Set a time
+        </Button>
+      ) : (
+        <div className="flex items-center gap-3">
+          <span className="w-16 shrink-0 text-sm font-semibold tabular-nums">{Math.floor(Number(value) / 60) ? `${Math.floor(Number(value) / 60)}h ` : ""}{Number(value) % 60 ? `${Number(value) % 60}m` : ""}</span>
+          <DurationSlider value={Number(value)} onChange={onChange} />
+          {!f.required && <IconButton icon={X} label="No time" onClick={() => onChange(null)} />}
+        </div>
+      );
     default:
       return <Input type={f.type === "url" ? "url" : "text"} value={text} onChange={(e) => onChange(e.target.value)} placeholder={f.placeholder ?? (f.type === "url" ? "https://" : "")} className={`w-full ${tall}`} />;
   }

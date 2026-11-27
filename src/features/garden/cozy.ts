@@ -167,12 +167,13 @@ export function bushBall(r: () => number, s: number, flowers = false) {
   return g;
 }
 
-export type TreeKind = "round" | "fruit" | "blossom" | "autumn";
+export type TreeKind = "round" | "fruit" | "blossom" | "autumn" | "golden";
 const CROWNS: Record<TreeKind, [string, string, string]> = {
   round: ["#3f9a46", "#5cbf55", "#8fd86b"],
   fruit: ["#3f9a46", "#55b857", "#86d46a"],
   blossom: ["#ef8fb1", "#f7b8cf", "#fde0ea"],
   autumn: ["#d2552f", "#ee7f35", "#f8b850"],
+  golden: ["#c9892c", "#e8b13e", "#f8d46e"],
 };
 
 /** A round, puffy tree: a leaning trunk under a fluffy crown (with fruit on the fruit tree). */

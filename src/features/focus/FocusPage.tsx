@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Coffee, GraduationCap, Lock, Minus, Play, Plus, Sparkles, Sprout, Square, Timer, Trophy } from "lucide-react";
+import { Coffee, GraduationCap, ListTodo, Lock, Play, Plus, Sparkles, Sprout, Square, Timer, Trophy, X } from "lucide-react";
 import { db, type Row } from "../../lib/api";
-import { useMutate, useRows } from "../../lib/hooks";
+import { useMutate, useRow, useRows } from "../../lib/hooks";
 import { addMinutes, fmtDateShort, fmtTime, startOfWeek, toDateStr, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
-import { Button, Card, ConfirmDelete, Input, MilestoneBar, Page, PageHeader, Progress, Segmented } from "../../components/ui";
+import { Button, Card, ConfirmDelete, DurationSlider, Input, MilestoneBar, Page, PageHeader, Progress, Segmented } from "../../components/ui";
 import { firstFreeBed, landName, landOf, SPECIES, speciesById, type Species } from "../garden/catalog";
 import { toast } from "../../stores/toast";
 import { Thumb, useThumbs } from "../garden/GardenPage";
@@ -29,7 +29,6 @@ import {
   type FocusSetup,
 } from "../../lib/focus";
 
-const PRESETS = [25, 45, 60, 90, 120, 180];
 const OTHER_IDEAS = ["Reading", "Red Cross", "Badminton prep", "Volunteering", "Journalling", "Admin & emails"];
 
 export default function FocusPage() {
@@ -76,8 +75,25 @@ function Setup() {
   );
   const set = (p: Partial<FocusSetup>) => setS((o) => ({ ...o, ...p }));
   const module = modules.find((m) => m.id === s.moduleId);
+
+  // Started from a to-do ("Focus on this"): its name and time, and its module if it has one.
+  const mutate = useMutate();
+  const todoParam = Number(params.get("todo")) || null;
+  const todo = useRow("todos", todoParam).data as Row | undefined;
+  const todoLinks = useRows("connections", { from_type: "todos", from_id: todoParam ?? -1, to_type: "modules" }, undefined, !!todoParam);
+  const todoModules = todoLinks.rows;
+  const planExam = useRow("exams", (todo?.plan_exam_id as number | null) ?? null).data as Row | undefined;
+  const [applied, setApplied] = useState<number | null>(null);
+  useEffect(() => {
+    if (!todo || applied === todo.id || !todoLinks.isFetched) return;
+    const moduleId = (todoModules[0]?.to_id as number | undefined) ?? (planExam?.module_id as number | undefined) ?? null;
+    if (todo.plan_exam_id && !planExam) return; // wait for the exam to load
+    setApplied(todo.id);
+    const minutes = Math.min(300, Math.max(5, Math.round((Number(todo.est_minutes) || 30) / 5) * 5));
+    setS((o) => ({ ...o, kind: moduleId ? "academic" : "other", moduleId: moduleId ?? o.moduleId, label: String(todo.title), plannedMin: minutes, todoId: todo.id }));
+  }, [todo, todoModules, todoLinks.isFetched, planExam, applied]);
+  const linkedTodo = s.todoId ? todo : undefined;
   const ok = s.plannedMin >= 5 && (s.kind === "other" ? s.label.trim() !== "" : !!module);
-  const step = (d: number) => set({ plannedMin: Math.min(12 * 60, Math.max(5, s.plannedMin + d)) });
   const ends = addMinutes(new Date(), s.plannedMin);
 
   return (
@@ -87,28 +103,27 @@ function Setup() {
         <h2 className="font-display text-2xl">What are we focusing on?</h2>
       </div>
       <div className="space-y-6 px-7 pt-2 pb-7">
+        {linkedTodo && (
+          <div className="flex items-center gap-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm">
+            <ListTodo size={16} className="shrink-0 text-accent" />
+            <span className="min-w-0 flex-1">
+              For your to-do <b>{String(linkedTodo.title)}</b>. When you save, you can tick it off.
+            </span>
+            <button type="button" className="text-muted hover:text-fg" aria-label="Not for this to-do" onClick={() => set({ todoId: null })}>
+              <X size={15} />
+            </button>
+          </div>
+        )}
         {/* Time */}
         <section>
           <Heading n={1}>How long do you plan to focus?</Heading>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <RoundBtn label="15 minutes less" onClick={() => step(s.plannedMin > 15 ? -15 : -5)}>
-                <Minus size={16} />
-              </RoundBtn>
-              <div className="min-w-36 text-center">
-                <div className="font-display tabular text-[40px] leading-none">{hm(s.plannedMin)}</div>
-                <div className="mt-1 text-xs text-muted">ends about {fmtTime(toLocal(ends))} without breaks</div>
-              </div>
-              <RoundBtn label="15 minutes more" onClick={() => step(s.plannedMin < 15 ? 5 : 15)}>
-                <Plus size={16} />
-              </RoundBtn>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            <div className="min-w-36">
+              <div className="font-display tabular text-[40px] leading-none">{hm(s.plannedMin)}</div>
+              <div className="mt-1 text-xs text-muted">ends about {fmtTime(toLocal(ends))} without breaks</div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {PRESETS.map((p) => (
-                <Chip key={p} active={s.plannedMin === p} onClick={() => set({ plannedMin: p })}>
-                  {hm(p)}
-                </Chip>
-              ))}
+            <div className="min-w-[240px] flex-1 pb-1">
+              <DurationSlider value={s.plannedMin} onChange={(plannedMin) => set({ plannedMin })} label="Planned focus time" />
             </div>
           </div>
           <p className="mt-3 text-xs text-muted">When the plan is up the timer keeps counting, so you never lose a minute. It only stops when you press Break or Stop.</p>
@@ -166,7 +181,10 @@ function Setup() {
         )}
 
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          <Button variant="primary" icon={Play} disabled={!ok} onClick={() => startFocus({ ...s, label: s.label.trim() })} className="!h-11 !rounded-2xl !px-6 !text-base">
+          <Button variant="primary" icon={Play} disabled={!ok} onClick={() => {
+              if (linkedTodo && linkedTodo.status === "Not Started") void mutate(db.update("todos", linkedTodo.id, { status: "In Progress" }));
+              startFocus({ ...s, label: s.label.trim() });
+            }} className="!h-11 !rounded-2xl !px-6 !text-base">
             Start focusing
           </Button>
           <span className="text-sm text-muted">
@@ -307,13 +325,6 @@ function Heading({ n, children }: { n: number; children: ReactNode }) {
   );
 }
 
-function RoundBtn({ children, label, onClick }: { children: ReactNode; label: string; onClick: () => void }) {
-  return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface-solid/70 hover:border-accent hover:text-accent">
-      {children}
-    </button>
-  );
-}
 
 function Chip({ children, active, onClick, color }: { children: ReactNode; active?: boolean; onClick: () => void; color?: string }) {
   return (

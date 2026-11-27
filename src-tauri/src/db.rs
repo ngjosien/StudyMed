@@ -22,6 +22,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0012_flowers_any_study.sql"),
     include_str!("../migrations/0013_exam_weeks.sql"),
     include_str!("../migrations/0014_class_changes_exam_grades.sql"),
+    include_str!("../migrations/0015_focus_todo.sql"),
 ];
 
 pub struct Db(Mutex<Connection>);

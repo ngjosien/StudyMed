@@ -8,7 +8,7 @@ import { useMutate, useRows } from "../lib/hooks";
 import { toDateTimeStr } from "../lib/dates";
 import { cx } from "../lib/format";
 import { toast } from "../stores/toast";
-import { Button, Field, Input, Modal, Textarea } from "./ui";
+import { Button, Checkbox, Field, Input, Modal, Textarea } from "./ui";
 import { Beats } from "./beats";
 import {
   breakMs,
@@ -108,6 +108,8 @@ function Finish({ run }: { run: FocusRun }) {
   const [note, setNote] = useState("");
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const todo = useRows("todos", { id: run.todoId ?? -1 }, undefined, !!run.todoId).rows[0];
+  const [tickTodo, setTickTodo] = useState(true);
   const n = Math.max(0, Math.min(24 * 60, Math.round(Number(mins) || 0)));
   const extra = n - run.plannedMin;
 
@@ -127,8 +129,11 @@ function Finish({ run }: { run: FocusRun }) {
           break_minutes: Math.round(breakMs(run) / 60_000),
           note: note.trim() || null,
           plant_id: academic ? (run.plantId ?? null) : null,
+          todo_id: todo ? todo.id : null,
         }),
       );
+      if (todo && tickTodo && !todo.done)
+        await mutate(db.update("todos", todo.id, { done: 1, status: "Done", completed_at: new Date().toISOString().slice(0, 19).replace("T", " ") }));
       clearFocus();
       toast.success(`Session saved · +${n} laurels${academic ? ` · ${hm(n)} added to ${m!.code}` : ""}`);
     } finally {
@@ -190,6 +195,7 @@ function Finish({ run }: { run: FocusRun }) {
           <span className="text-sm text-muted">You'll earn</span>
           <Beats n={n} sign className="text-lg" />
         </div>
+        {todo && !todo.done && <Checkbox checked={tickTodo} onChange={setTickTodo} label={`Mark "${todo.title}" done`} />}
         {run.kind === "academic" && m && <p className="text-xs text-muted">The minutes also count toward {m.code}'s study target for this week.</p>}
       </div>
     </Modal>

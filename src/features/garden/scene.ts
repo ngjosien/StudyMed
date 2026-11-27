@@ -4,10 +4,13 @@
 // soft sunlight and drifting clouds. One soil bed per day of the month, with grass
 // at the front for decorations. Flowers sway; the one growing right now sparkles;
 // bloomed flowers with laurels to collect have a golden token bobbing over them.
+// The world curves gently away from where you look, like a small planet, under a
+// warm autumn sky: golden light, peach clouds, autumn trees and drifting leaves.
 // Drag to turn, scroll to zoom, click a bed to pick it.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { TessellateModifier } from "three/examples/jsm/modifiers/TessellateModifier.js";
 import { disposeObject, ell, mat, rng, TOON_RAMP } from "./models";
 import { bushBall, buildGardenDecor, edgeTree, rock, tuft, wildflowers, type TreeKind } from "./cozy";
 import { buildFlower } from "./flowers";
@@ -32,6 +35,45 @@ const SIDE = 1.5; // grass between the plots and the island's sides / front
 const BACK = 2.6; // deeper at the back, for the terrace
 const TERRACE_H = 0.55;
 
+/** How much the ground drops with distance (squared) from the point you look at. */
+const CURVE_AMOUNT = 0.01;
+const CURVE = { uCurve: { value: 0 }, uCurveCenter: { value: new THREE.Vector2() } };
+/** Bends a material's vertices down with distance from the centre of view, for a round-world look. */
+function curveMaterial(m: THREE.Material) {
+  if (m.userData.curved) return;
+  m.userData.curved = true;
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uCurve = CURVE.uCurve;
+    shader.uniforms.uCurveCenter = CURVE.uCurveCenter;
+    shader.vertexShader =
+      "uniform float uCurve;\nuniform vec2 uCurveCenter;\n" +
+      shader.vertexShader.replace(
+        "#include <project_vertex>",
+        `vec4 mvPosition = vec4( transformed, 1.0 );
+vec4 curvedWorld = modelMatrix * mvPosition;
+vec2 curveD = curvedWorld.xz - uCurveCenter;
+curvedWorld.y -= dot(curveD, curveD) * uCurve;
+mvPosition = viewMatrix * curvedWorld;
+gl_Position = projectionMatrix * mvPosition;`,
+      );
+  };
+  m.customProgramCacheKey = () => "curved";
+  m.needsUpdate = true;
+}
+/** Splits a big shape into small triangles so it bends smoothly with the world's curve. */
+function fine(g: THREE.BufferGeometry) {
+  const out = new TessellateModifier(0.45, 10).modify(g);
+  g.dispose();
+  return out;
+}
+function curveObject(o: THREE.Object3D) {
+  o.traverse((c) => {
+    const m = (c as THREE.Mesh).material;
+    if (m) (Array.isArray(m) ? m : [m]).forEach(curveMaterial);
+  });
+}
+const LEAF_COLORS = ["#e8742c", "#d9502e", "#f0b43c", "#c9892c", "#b8452a"];
+
 function canvasTex(w: number, h: number, paint: (g: CanvasRenderingContext2D) => void) {
   const c = document.createElement("canvas");
   c.width = w;
@@ -46,7 +88,7 @@ function canvasTex(w: number, h: number, paint: (g: CanvasRenderingContext2D) =>
 /** Painted-looking grass: soft blotches of light and dark green and tiny blade strokes. */
 const grassTexture = () =>
   canvasTex(512, 512, (g) => {
-    g.fillStyle = "#8fd164";
+    g.fillStyle = "#a3c95e";
     g.fillRect(0, 0, 512, 512);
     const r = rng(11);
     for (let i = 0; i < 240; i++) {
@@ -54,15 +96,17 @@ const grassTexture = () =>
       const y = r() * 512;
       const rad = 12 + r() * 48;
       const grad = g.createRadialGradient(x, y, 0, x, y, rad);
-      grad.addColorStop(0, r() < 0.5 ? "rgba(182,230,130,0.4)" : "rgba(100,170,72,0.28)");
-      grad.addColorStop(1, "rgba(143,209,100,0)");
+      const k = r();
+      grad.addColorStop(0, k < 0.35 ? "rgba(226,200,110,0.38)" : k < 0.7 ? "rgba(190,226,128,0.34)" : "rgba(110,160,66,0.28)");
+      grad.addColorStop(1, "rgba(163,201,94,0)");
       g.fillStyle = grad;
       g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
     }
     for (let i = 0; i < 1200; i++) {
       const x = r() * 512;
       const y = r() * 512;
-      g.strokeStyle = r() < 0.5 ? "rgba(88,152,62,0.35)" : "rgba(196,238,146,0.4)";
+      const k = r();
+      g.strokeStyle = k < 0.4 ? "rgba(96,148,60,0.35)" : k < 0.75 ? "rgba(206,232,150,0.4)" : "rgba(222,190,108,0.4)";
       g.lineWidth = 1.3;
       g.beginPath();
       g.moveTo(x, y);
@@ -104,12 +148,14 @@ const waterTexture = () =>
 
 function cloud(r: () => number) {
   const g = new THREE.Group();
-  const white = mat("#ffffff", { emissive: "#ffffff", ei: 0.35 });
-  for (let i = 0; i < 6; i++) {
-    const s = 0.6 + r() * 0.7;
-    const b = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), white);
-    b.scale.set(s * 1.3, s * 0.8, s);
-    b.position.set((i - 2.5) * 0.75 + r() * 0.3, r() * 0.4, r() * 0.6);
+  const top = mat("#fff6ec", { emissive: "#fff1e0", ei: 0.45 });
+  const under = mat("#ffd9c2", { emissive: "#ffc9a8", ei: 0.3 });
+  const n = 5 + Math.floor(r() * 4);
+  for (let i = 0; i < n; i++) {
+    const s = 0.7 + r() * 0.9;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), i % 3 === 2 ? under : top);
+    b.scale.set(s * 1.35, s * 0.8, s);
+    b.position.set((i - n / 2) * 0.8 + r() * 0.3, r() * 0.5 - (i % 3 === 2 ? 0.25 : 0), r() * 0.7);
     g.add(b);
   }
   return g;
@@ -134,6 +180,7 @@ export class GardenScene {
   private selectRing: THREE.Mesh;
   private sparkles: THREE.Mesh[] = [];
   private petals: { m: THREE.Mesh; vx: number; vz: number; spin: number; life: number }[] = [];
+  private bounds = { w: 10, d: 10, cz: 0 };
   private clouds: THREE.Group[] = [];
   private sways: THREE.Object3D[] = [];
   private water!: THREE.Mesh;
@@ -165,7 +212,7 @@ export class GardenScene {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.02;
+    this.renderer.toneMappingExposure = 1.04;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.display = "block";
@@ -173,7 +220,7 @@ export class GardenScene {
 
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
     this.camera.position.set(5.4, 7.2, 8.4);
-    this.scene.fog = new THREE.Fog("#cfeaf7", 20, 50);
+    this.scene.fog = new THREE.Fog("#ecdccb", 28, 80);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
@@ -183,9 +230,9 @@ export class GardenScene {
     this.controls.target.set(0, 0.2, -0.4);
 
     // Warm sun with soft shadows, a sky/grass bounce and a cool fill.
-    this.scene.add(new THREE.HemisphereLight("#eaf6ff", "#9fd27a", 1.05));
-    const sun = new THREE.DirectionalLight("#ffeccc", 2.6);
-    sun.position.set(6, 11, 6);
+    this.scene.add(new THREE.HemisphereLight("#ffe8d0", "#b9a86a", 1.05));
+    const sun = new THREE.DirectionalLight("#ffd6a0", 2.75);
+    sun.position.set(8, 8, 5);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.radius = 5;
@@ -197,7 +244,7 @@ export class GardenScene {
     sc.top = 10;
     sc.bottom = -10;
     this.scene.add(sun);
-    const fill = new THREE.DirectionalLight("#d4e8ff", 0.45);
+    const fill = new THREE.DirectionalLight("#d8ccff", 0.4);
     fill.position.set(-6, 4, -4);
     this.scene.add(fill);
 
@@ -210,6 +257,7 @@ export class GardenScene {
     for (const r of [this.hoverRing, this.selectRing]) {
       r.rotation.x = -Math.PI / 2;
       r.visible = false;
+      curveMaterial(r.material as THREE.Material);
       r.renderOrder = 2;
       this.scene.add(r);
     }
@@ -222,9 +270,11 @@ export class GardenScene {
       this.scene.add(s);
     }
     const cr = rng(3);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 9; i++) {
       const c = cloud(cr);
-      c.position.set(-14 + i * 7 + cr() * 3, 7 + cr() * 2.5, -13 - cr() * 6);
+      const far = i % 3 === 0;
+      c.position.set(-22 + i * 5.5 + cr() * 3, (far ? 4 : 6.5) + cr() * 3, (far ? -24 : -12) - cr() * 8);
+      c.scale.setScalar(far ? 1.6 : 1 + cr() * 0.4);
       c.userData.speed = 0.15 + cr() * 0.15;
       this.clouds.push(c);
       this.scene.add(c);
@@ -288,7 +338,8 @@ export class GardenScene {
     };
 
     // Sea, shallows and a sandy beach all round.
-    const water = new THREE.Mesh(new THREE.CircleGeometry(Math.max(W, D) * 4, 64), mat("#79cde8", { rough: 0.2 }));
+    // Finely divided so it can curve smoothly away to the horizon.
+    const water = new THREE.Mesh(new THREE.RingGeometry(0, Math.max(W, D) * 6, 96, 56), mat("#6cc2e0", { rough: 0.2 }));
     water.rotation.x = -Math.PI / 2;
     water.position.set(0, -0.48, cz);
     water.receiveShadow = true;
@@ -296,9 +347,11 @@ export class GardenScene {
     this.island.add(water);
     const shallows = new THREE.Mesh(new RoundedBoxGeometry(W + 1.8, 0.04, D + 1.8, 6, 0.02), mat("#a2e2ef", { rough: 0.25, opacity: 0.75 }));
     shallows.position.set(0, -0.46, cz);
+    (shallows as THREE.Mesh).geometry = fine(shallows.geometry);
     this.island.add(shallows);
     const sand = new THREE.Mesh(new RoundedBoxGeometry(W + 1.0, 0.34, D + 1.0, 8, 0.17), toon({ color: "#f3dfb2" }));
     sand.position.set(0, -0.37, cz);
+    (sand as THREE.Mesh).geometry = fine(sand.geometry);
     sand.receiveShadow = true;
     this.island.add(sand);
 
@@ -307,12 +360,14 @@ export class GardenScene {
     this.cliffTex.repeat.set(W / 2, 1);
     const earth = new THREE.Mesh(new RoundedBoxGeometry(W, 0.5, D, 8, 0.24), cliffMat);
     earth.position.set(0, -0.25, cz);
+    (earth as THREE.Mesh).geometry = fine(earth.geometry);
     earth.receiveShadow = true;
     this.island.add(earth);
     const grassMat = toon({ map: this.grassTex });
     this.grassTex.repeat.set(W / 3, D / 3);
     const grass = new THREE.Mesh(new RoundedBoxGeometry(W + 0.06, 0.2, D + 0.06, 8, 0.1), grassMat);
     grass.position.set(0, -0.02, cz);
+    (grass as THREE.Mesh).geometry = fine(grass.geometry);
     grass.receiveShadow = true;
     this.island.add(grass);
 
@@ -321,11 +376,13 @@ export class GardenScene {
     const tz = back + tD / 2 + 0.05;
     const terrace = new THREE.Mesh(new RoundedBoxGeometry(W - 0.1, TERRACE_H, tD, 8, 0.2), cliffMat);
     terrace.position.set(0, TERRACE_H / 2 - 0.02, tz);
+    (terrace as THREE.Mesh).geometry = fine(terrace.geometry);
     terrace.castShadow = true;
     terrace.receiveShadow = true;
     this.island.add(terrace);
     const cap = new THREE.Mesh(new RoundedBoxGeometry(W - 0.02, 0.14, tD + 0.08, 8, 0.07), grassMat);
     cap.position.set(0, TERRACE_H + 0.02, tz);
+    (cap as THREE.Mesh).geometry = fine(cap.geometry);
     cap.receiveShadow = true;
     this.island.add(cap);
     const topY = TERRACE_H + 0.09;
@@ -338,6 +395,7 @@ export class GardenScene {
     const sz = (front + 0.6 + tz + tD / 2) / 2;
     const stream = new THREE.Mesh(new RoundedBoxGeometry(0.62, 0.06, sLen, 4, 0.03), streamMat);
     stream.position.set(sx, 0.06, sz);
+    (stream as THREE.Mesh).geometry = fine(stream.geometry);
     stream.receiveShadow = true;
     this.island.add(stream);
     for (const side of [-1, 1]) {
@@ -355,6 +413,7 @@ export class GardenScene {
     this.island.add(pool);
     const topStream = new THREE.Mesh(new RoundedBoxGeometry(0.56, 0.04, tD * 0.7, 4, 0.02), streamMat);
     topStream.position.set(sx, topY, tz + tD * 0.15);
+    (topStream as THREE.Mesh).geometry = fine(topStream.geometry);
     this.island.add(topStream);
     for (let i = 0; i < 7; i++) add(rock(r, 0.06 + r() * 0.06, "#c9c3b8"), sx + (r() < 0.5 ? -1 : 1) * (0.36 + r() * 0.08), 0.06, sz - sLen / 2 + r() * sLen);
     // A small wooden bridge across the stream.
@@ -414,7 +473,7 @@ export class GardenScene {
     }
 
     // Trees and bushes along the terrace.
-    const kinds: TreeKind[] = ["round", "round", "fruit", "round", "blossom", "round", "autumn"];
+    const kinds: TreeKind[] = ["autumn", "golden", "round", "autumn", "fruit", "golden", "autumn", "round"];
     for (let x = -W / 2 + 0.55; x <= W / 2 - 0.4; x += 0.85 + r() * 0.35) {
       if (Math.abs(x - sx) < 0.5) continue;
       if (r() < 0.25) add(bushBall(r, 0.2 + r() * 0.08, r() < 0.5), x, topY, tz - tD * 0.15 + (r() - 0.5) * 0.4, true);
@@ -444,6 +503,19 @@ export class GardenScene {
     add(edgeTree(r, "fruit", 1.3), W / 2 - 0.45, 0.08, front - 0.45, true);
     add(bushBall(r, 0.22, true), W / 2 - 0.95, 0.08, front - 0.35, true);
     add(edgeTree(r, "round", 1.2), -halfW - 0.1, 0.08, front - 0.4, true);
+    // Fallen leaves scattered on the grass round the beds.
+    for (let k = 0, n = 0; n < 70 && k < 2000; k++) {
+      const x = (r() - 0.5) * (W - 0.4);
+      const z = back + 0.2 + r() * (D - 0.4);
+      if (z < tz + tD / 2 + 0.1 || !free(x, z)) continue;
+      n++;
+      const leaf = ell(0.05 + r() * 0.03, 0.006, 0.03 + r() * 0.015, LEAF_COLORS[Math.floor(r() * LEAF_COLORS.length)], undefined, true);
+      leaf.castShadow = false;
+      leaf.position.set(x, 0.085, z);
+      leaf.rotation.y = r() * Math.PI * 2;
+      this.island.add(leaf);
+    }
+    this.bounds = { w: W, d: D, cz };
     // Rocks where the grass meets the beach, and lily pads on the sea.
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * Math.PI * 2 + r() * 0.3;
@@ -461,6 +533,8 @@ export class GardenScene {
       this.island.add(pad);
     }
 
+    curveObject(this.island);
+    curveObject(this.plotsGroup);
     const span = Math.max(this.cols, this.rows * 1.4);
     this.controls.maxDistance = 12 + span * 2.2;
     this.controls.minDistance = 4;
@@ -483,6 +557,7 @@ export class GardenScene {
       obj.position.copy(this.plotPos(cell.plot));
       obj.rotation.y = ((cell.rot ?? 0) * Math.PI) / 2 + (cell.kind === "plant" ? (cell.seed % 7) * 0.4 : 0);
       obj.userData.seed = cell.seed;
+      curveObject(obj);
       this.scene.add(obj);
       this.objects.set(cell.plot, { key: cell.key, obj, cell });
       obj.scale.setScalar(0.6);
@@ -586,6 +661,18 @@ export class GardenScene {
       this.resize();
     }
 
+    CURVE.uCurve.value = CURVE_AMOUNT;
+    CURVE.uCurveCenter.value.set(this.controls.target.x, this.controls.target.z);
+    if (this.petals.length < 60 && Math.random() < dt * 3.5) {
+      const b = this.bounds;
+      const m = ell(0.04, 0.007, 0.026, LEAF_COLORS[Math.floor(Math.random() * LEAF_COLORS.length)], undefined, true);
+      m.castShadow = false;
+      m.position.set((Math.random() - 0.6) * b.w, 2.4 + Math.random() * 1.4, b.cz + (Math.random() - 0.5) * b.d);
+      curveMaterial(m.material as THREE.Material);
+      this.scene.add(m);
+      this.petals.push({ m, vx: 0.18 + Math.random() * 0.22, vz: (Math.random() - 0.5) * 0.25, spin: 1 + Math.random() * 4, life: 0 });
+    }
+
     let growing: THREE.Object3D | null = null;
     const blooming: THREE.Object3D[] = [];
     for (const { obj, cell } of this.objects.values()) {
@@ -629,6 +716,7 @@ export class GardenScene {
       const src = blooming[Math.floor(Math.random() * blooming.length)];
       const m = ell(0.03, 0.006, 0.02, Math.random() < 0.5 ? "#ffc1d6" : "#ffd6e4", undefined, true);
       m.castShadow = false;
+      curveMaterial(m.material as THREE.Material);
       m.position.set(src.position.x + (Math.random() - 0.5) * 1.0, src.position.y + 1.1 + Math.random() * 0.5, src.position.z + (Math.random() - 0.5) * 1.0);
       this.scene.add(m);
       this.petals.push({ m, vx: 0.15 + Math.random() * 0.2, vz: (Math.random() - 0.5) * 0.2, spin: Math.random() * 4, life: 0 });
@@ -655,7 +743,7 @@ export class GardenScene {
     place(this.hoverRing, this.hovered !== this.selected ? this.hovered : null, 0);
     place(this.selectRing, this.selected, 0.002);
     this.selectRing.scale.setScalar(1 + Math.sin(t * 3) * 0.025);
-    if (this.water) (this.water.material as THREE.MeshStandardMaterial).color.setHSL(0.54, 0.68, 0.66 + Math.sin(t * 0.8) * 0.012);
+    if (this.water) (this.water.material as THREE.MeshStandardMaterial).color.setHSL(0.535, 0.78, 0.6 + Math.sin(t * 0.8) * 0.012);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -708,11 +796,14 @@ export async function renderThumbs(size = 168): Promise<Record<string, string>> 
     scene.remove(obj);
     disposeObject(obj);
   };
+  const curve = CURVE.uCurve.value;
+  CURVE.uCurve.value = 0;
   for (const s of SPECIES) {
     for (let tier = 0; tier < 5; tier++) shoot(`flower:${s.id}:${tier}`, buildFlower(s.id, 1, tier, 13));
     out[`plant:${s.id}`] = out[`flower:${s.id}:2`];
   }
   for (const d of DECOR) shoot(`decor:${d.id}`, buildGardenDecor(d.id, 5));
+  CURVE.uCurve.value = curve;
   renderer.dispose();
   renderer.forceContextLoss();
   thumbsEpoch++;

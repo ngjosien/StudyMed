@@ -6,7 +6,8 @@ import { useDeepLinkForm } from "../../lib/deeplink";
 import { fmtDateTime, fmtTime, today } from "../../lib/dates";
 import { cx } from "../../lib/format";
 import { Badge, Button, Card, Checkbox, Drawer, Empty, IconButton, Input, Page, PageHeader, Progress, Segmented } from "../../components/ui";
-import { WeekBoard } from "../../components/weekboard";
+import { WeeksStrip } from "../../components/weekboard";
+import { useSemester } from "./WeeklyContent";
 import { useSetting } from "../../stores/ui";
 import { useFormState } from "../../components/form";
 import { CountdownBadge } from "../../components/shared";
@@ -154,6 +155,11 @@ export default function ExamsPage() {
   useDeepLinkForm("exams", form, undefined, (r) => setOpenId(r.id));
   const { rows } = useRows("exams", undefined, "start_at, id");
   const [view, setView] = useSetting<"week" | "list">("view.exams", "list");
+  const sem = useSemester();
+  const weekName = (monday: string) => {
+    const n = sem.weekOf(monday);
+    return n ? `Week ${n}` : null;
+  };
   // Always in date order: upcoming from the closest, then past from the most recent.
   const t = today();
   const isPast = (e: Row) => !!e.start_at && String(e.start_at).slice(0, 10) < t;
@@ -218,25 +224,26 @@ export default function ExamsPage() {
       <Page className="space-y-6">
         <CountdownStrip exams={rows} byId={byId} onOpen={setOpenId} onPlan={setPlanning} />
         {view === "week" ? (
-          <WeekBoard
+          <WeeksStrip
             rows={rows}
             dateOf={(e) => e.start_at}
-            isOpen={(e) => !e.grade}
+            weekName={weekName}
             onAdd={(date) => form.openNew({ start_at: date + "T09:00" })}
             addLabel="Add exam on"
             noDateLabel="Date TBC"
             render={(e) => {
               const m = byId.get(e.module_id);
               return (
-                <Card onClick={() => setOpenId(e.id)} className="relative overflow-hidden p-2.5 pl-3.5">
+                <Card onClick={() => setOpenId(e.id)} className="relative overflow-hidden p-3 pl-4">
                   <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: m?.color }} />
                   <div className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-muted">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: m?.color }} />
                     {m?.code}
                     {e.grade && <span className="ml-auto rounded-full bg-[#10b981]/15 px-1.5 text-[#0f9f6e]">{e.grade}</span>}
                   </div>
-                  <div className="line-clamp-2 text-[13px] leading-snug font-medium">{e.name}</div>
-                  <div className="mt-1 text-[11px] text-muted">
+                  <div className="line-clamp-2 text-[15px] leading-snug font-medium">{e.name}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                    {!e.grade && <CountdownBadge date={e.start_at} />}
                     {String(e.start_at ?? "").length > 10 ? fmtTime(e.start_at) : ""}
                     {e.venue ? ` · ${e.venue}` : ""}
                   </div>

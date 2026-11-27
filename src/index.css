@@ -13,6 +13,31 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Drag bar for lengths of time (Focus plan, to-do time). */
+.duration-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) var(--fill, 0%), var(--surface-2) var(--fill, 0%));
+  outline: none;
+  cursor: pointer;
+}
+.duration-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 3px solid var(--surface-solid);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.duration-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
 /* Module "theme colours": they follow whichever theme is selected. */
 html {
   --theme-1: var(--accent);

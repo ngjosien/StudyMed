@@ -1,11 +1,11 @@
 ﻿import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { CalendarRange, List, ListTodo, Plus, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { CalendarRange, List, ListTodo, Plus, Timer, X } from "lucide-react";
 import { api, db, type Row } from "../../lib/api";
 import { useMutate, useRows, useTagsBy } from "../../lib/hooks";
 import { cx, fmtMinutes } from "../../lib/format";
 import { fmtDateShort, fmtTime, today } from "../../lib/dates";
-import { Button, Card, Checkbox, ConfirmDelete, Drawer, Empty, Field, IconButton, Input, Page, PageHeader, Segmented } from "../../components/ui";
+import { Button, Card, Checkbox, ConfirmDelete, Drawer, DurationSlider, Empty, Field, IconButton, Input, Page, PageHeader, Segmented } from "../../components/ui";
 import { TodosToday } from "../../components/study-stats";
 import { FormModal, useFormState, type FormState } from "../../components/form";
 import { Countdown, WeekBoard } from "../../components/weekboard";
@@ -18,7 +18,6 @@ import { LinkChips, LinkedSections } from "../../components/linked";
 
 const KINDS = ["events", "people", "homework", "exams", "modules", "tick_goals", "portfolio_entries", "savings_goals"];
 const PRIORITIES = ["Low", "Medium", "High"];
-const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180];
 
 const doneChange = (done: boolean): Row =>
   done
@@ -33,6 +32,10 @@ function TodoPanel({ todo, allTags, onClose }: { todo: Row; allTags: string[]; o
   const [rems, setRems] = useState<string[]>([]);
   const [sub, setSub] = useState("");
   const subtasks = useRows("todos", { parent_id: todo.id }, "position, id").rows;
+  const nav = useNavigate();
+  const focused = useRows("focus_sessions", { todo_id: todo.id }).rows.reduce((n, f) => n + Number(f.focus_minutes), 0);
+  const [est, setEst] = useState<number | null>(todo.est_minutes ?? null);
+  useEffect(() => setEst(todo.est_minutes ?? null), [todo.est_minutes]);
   const notesTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => setV(todo), [todo]);
@@ -77,9 +80,24 @@ function TodoPanel({ todo, allTags, onClose }: { todo: Row; allTags: string[]; o
         <Field label="Priority">
           <ChoiceField options={PRIORITIES.map((p) => ({ value: p, label: p }))} value={v.priority} onChange={(p) => save({ priority: p })} />
         </Field>
-        <Field label="Takes about">
-          <ChoiceField options={DURATIONS.map((m) => ({ value: m, label: fmtMinutes(m) }))} value={v.est_minutes} clearable onChange={(m) => save({ est_minutes: m })} />
+        <Field label="Time to finish it in" hint={focused ? `Focused ${fmtMinutes(focused)} so far` : undefined}>
+          {est == null ? (
+            <Button size="sm" onClick={() => save({ est_minutes: 30 })}>
+              Set a time
+            </Button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span className="w-16 shrink-0 text-sm font-semibold tabular-nums">{fmtMinutes(est)}</span>
+              <DurationSlider value={est} onChange={setEst} onCommit={(m) => save({ est_minutes: m })} label="Time to finish it in" />
+              <IconButton icon={X} label="No time" onClick={() => save({ est_minutes: null })} />
+            </div>
+          )}
         </Field>
+        {!v.done && (
+          <Button variant="primary" icon={Timer} className="!rounded-full" onClick={() => nav(`/focus?todo=${todo.id}`)}>
+            Focus on this{est ? ` for ${fmtMinutes(est)}` : ""}
+          </Button>
+        )}
         <Field label="Category">
           <TagInput
             value={tags}
@@ -162,7 +180,7 @@ function TodoForm({ state }: { state: FormState }) {
         { key: "date", label: "Do it on", type: "date" },
         { key: "time", label: "At", type: "time" },
         { key: "priority", label: "Priority", type: "select", options: PRIORITIES.map((p) => ({ value: p, label: p, color: PRIORITY_COLOR[p] })), required: true, full: true },
-        { key: "est_minutes", label: "Takes about", type: "select", numeric: true, full: true, options: DURATIONS.map((m) => ({ value: m, label: fmtMinutes(m) })) },
+        { key: "est_minutes", label: "Time to finish it in", type: "duration", full: true },
         { key: "notes_md", label: "Notes", type: "markdown", more: true },
       ]}
       reminders={{
@@ -176,6 +194,7 @@ function TodoForm({ state }: { state: FormState }) {
 
 function TodoCard({ t, onOpen, compact }: { t: Row; onOpen: () => void; compact?: boolean }) {
   const mutate = useMutate();
+  const nav = useNavigate();
   return (
     <Card onClick={onOpen} className={cx("flex items-start gap-2.5", compact ? "p-2.5" : "px-4 py-3")}>
       <span className="pt-0.5" onClick={(e) => e.stopPropagation()}>
@@ -197,6 +216,20 @@ function TodoCard({ t, onOpen, compact }: { t: Row; onOpen: () => void; compact?
         </div>
         <LinkChips type="todos" id={t.id} />
       </div>
+      {!t.done && (
+        <button
+          type="button"
+          title={`Focus on this${t.est_minutes ? ` for ${fmtMinutes(t.est_minutes)}` : ""}`}
+          aria-label="Focus on this"
+          onClick={(e) => {
+            e.stopPropagation();
+            nav(`/focus?todo=${t.id}`);
+          }}
+          className="shrink-0 rounded-full p-1.5 text-muted hover:bg-accent-soft hover:text-accent"
+        >
+          <Timer size={compact ? 14 : 16} />
+        </button>
+      )}
     </Card>
   );
 }

@@ -599,3 +599,51 @@ export function Segmented<T extends string>({
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">{children}</kbd>;
 }
+
+/** A length of time on a drag bar: 5-minute steps, up to 5 hours by default. */
+export function DurationSlider({
+  value,
+  onChange,
+  onCommit,
+  min = 5,
+  max = 300,
+  step = 5,
+  label = "Length",
+}: {
+  value: number;
+  onChange: (minutes: number) => void;
+  /** Called once when you let go (to save then, not on every step). */
+  onCommit?: (minutes: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  label?: string;
+}) {
+  const v = Math.min(max, Math.max(min, Math.round(value / step) * step));
+  const pct = ((v - min) / (max - min)) * 100;
+  const marks = Array.from({ length: Math.floor(max / 60) + 1 }, (_, h) => h);
+  return (
+    <div className="w-full">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={v}
+        aria-label={label}
+        onChange={(e) => onChange(Number(e.target.value))}
+        onPointerUp={(e) => onCommit?.(Number(e.currentTarget.value))}
+        onKeyUp={(e) => onCommit?.(Number(e.currentTarget.value))}
+        className="duration-slider w-full"
+        style={{ "--fill": `${pct}%` } as React.CSSProperties}
+      />
+      <div className="relative mt-1 h-4 text-[10.5px] text-muted">
+        {marks.map((h) => (
+          <span key={h} className="absolute -translate-x-1/2" style={{ left: `${((Math.max(min, h * 60) - min) / (max - min)) * 100}%` }}>
+            {h ? `${h}h` : `${min}m`}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -310,7 +310,7 @@ export default function GardenPage() {
               "relative overflow-hidden rounded-[22px]",
               isMobile ? "h-[62vh] min-h-[380px] border border-line shadow-lg" : "glass h-[min(72vh,760px)] min-h-[480px]",
             )}
-            style={{ background: "linear-gradient(180deg, #bfe6ff 0%, #dff3ff 45%, #fff6dc 100%)" }}
+            style={{ background: "linear-gradient(180deg, #8fb8e0 0%, #c9d6ea 30%, #f6d3b4 62%, #ffcf98 100%)" }}
           >
             <Island beds={beds} cells={cells} selected={selected} onPick={pickPlot} />
             <div className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/80 p-1 text-[#2d3a2a] shadow-lg backdrop-blur">

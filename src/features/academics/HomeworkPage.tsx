@@ -6,7 +6,8 @@ import { fmtTime, parse, today } from "../../lib/dates";
 import type { Row } from "../../lib/api";
 import { cx } from "../../lib/format";
 import { Badge, Button, Card, Checkbox, Empty, Page, PageHeader, Segmented } from "../../components/ui";
-import { Countdown, WeekBoard } from "../../components/weekboard";
+import { Countdown, WeeksStrip } from "../../components/weekboard";
+import { useSemester } from "./WeeklyContent";
 import { useSetting } from "../../stores/ui";
 import { useFormState } from "../../components/form";
 import { LinkChips, LinkedSections } from "../../components/linked";
@@ -48,6 +49,11 @@ export default function HomeworkPage() {
   ];
   const sectionOf = (h: Row) => (isDone(h) ? "Submitted" : h.due_at && String(h.due_at).slice(0, 10) < t ? "Overdue" : "To do");
   const [view, setView] = useSetting<"week" | "list">("view.homework", "week");
+  const sem = useSemester();
+  const weekName = (monday: string) => {
+    const n = sem.weekOf(monday);
+    return n ? `Week ${n}` : null;
+  };
   const tick = (h: Row, c: boolean) => mutate(db.update("homework", h.id, { status: c ? "Submitted" : "Not Started" }));
 
   return (
@@ -74,17 +80,18 @@ export default function HomeworkPage() {
       />
       <Page>
         {view === "week" ? (
-          <WeekBoard
+          <WeeksStrip
             rows={rows}
             dateOf={(h) => h.due_at}
             isOpen={(h) => h.status !== "Submitted"}
+            weekName={weekName}
             onAdd={(date) => form.openNew({ due_at: date + "T23:59" })}
             addLabel="Add homework due"
             render={(h) => {
               const done = h.status === "Submitted";
               const m = byId.get(h.module_id);
               return (
-                <Card onClick={() => form.openEdit(h)} className="relative overflow-hidden p-2.5 pl-3.5">
+                <Card onClick={() => form.openEdit(h)} className="relative overflow-hidden p-3 pl-4">
                   <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: m?.color }} />
                   <div className="flex items-start gap-2">
                     <span className="pt-0.5" onClick={(e) => e.stopPropagation()}>
@@ -95,7 +102,7 @@ export default function HomeworkPage() {
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: m?.color }} />
                         {m?.code}
                       </div>
-                      <div className={cx("line-clamp-2 text-[13px] leading-snug font-medium", done && "text-muted line-through")}>{h.title}</div>
+                      <div className={cx("line-clamp-2 text-[15px] leading-snug font-medium", done && "text-muted line-through")}>{h.title}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
                         <Countdown date={h.due_at} done={done} />
                         {String(h.due_at ?? "").length > 10 && <span>{fmtTime(h.due_at)}</span>}

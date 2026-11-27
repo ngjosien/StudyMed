@@ -69,7 +69,8 @@ function ScoreCell({ comp, cut, onSave }: { comp: Row; cut: Record<string, numbe
 
 function ModuleGrade({ module: m, cut, onEdit }: { module: Row; cut: Record<string, number>; onEdit: () => void }) {
   const mutate = useMutate();
-  const comps = useRows("grading_components", { module_id: m.id }, "position, id").rows;
+  // Earliest assessment first; undated ones at the end in the order they were added.
+  const comps = [...useRows("grading_components", { module_id: m.id }, "position, id").rows].sort((a, b) => (a.due_date ? String(a.due_date) : "9999").localeCompare(b.due_date ? String(b.due_date) : "9999"));
   const homework = useRows("homework", { module_id: m.id }).rows;
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
